@@ -8,9 +8,11 @@ import {
   eventFullForGoing,
   everyone,
   filterForViewer,
+  filterStaffStudents,
   importantChanges,
   nextEvent,
   nowEvent,
+  onboardingComplete,
   openVotes,
   pendingAcknowledgements,
   pickActiveProgrammeId,
@@ -22,10 +24,12 @@ import {
   voteBlockedReason,
   type Audience,
   type ChecklistItem,
+  type ChecklistProgress,
   type ProgrammeEvent,
   type ProgrammeHub,
   type ProgrammeVote,
   type StaffContext,
+  type StaffStudentSummary,
   type StaffWorkspace,
 } from "./logic";
 
@@ -433,5 +437,92 @@ describe("pickActiveProgrammeId", () => {
     const newer = workspace({ programmeId: "newer", createdAt: "2026-06-01T00:00:00.000Z" });
     expect(pickActiveProgrammeId([older, newer])).toBe("newer");
     expect(pickActiveProgrammeId([newer, older])).toBe("newer");
+  });
+});
+
+describe("onboardingComplete", () => {
+  const progress = (over: Partial<ChecklistProgress>): ChecklistProgress => ({
+    done: 0,
+    total: 0,
+    requiredDone: 0,
+    requiredTotal: 0,
+    percent: 0,
+    ...over,
+  });
+
+  it("is complete once every required item is done, optional items notwithstanding", () => {
+    expect(
+      onboardingComplete(progress({ requiredDone: 3, requiredTotal: 3, done: 3, total: 5, percent: 60 })),
+    ).toBe(true);
+  });
+
+  it("is not complete while a required item is outstanding, even at a high overall percent", () => {
+    expect(
+      onboardingComplete(progress({ requiredDone: 3, requiredTotal: 4, done: 8, total: 9, percent: 88 })),
+    ).toBe(false);
+  });
+
+  it("falls back to the overall percent when a cohort has zero required items", () => {
+    expect(onboardingComplete(progress({ requiredTotal: 0, total: 2, done: 2, percent: 100 }))).toBe(true);
+    expect(onboardingComplete(progress({ requiredTotal: 0, total: 2, done: 1, percent: 50 }))).toBe(false);
+  });
+
+  it("an empty checklist is not complete", () => {
+    expect(onboardingComplete(progress({}))).toBe(false);
+  });
+});
+
+describe("filterStaffStudents", () => {
+  const student = (over: Partial<StaffStudentSummary>): StaffStudentSummary => ({
+    userId: "u1",
+    displayName: "Rachel Cohen",
+    handle: "rachel",
+    groups: [{ id: "g1", name: "Jerusalem A" }],
+    lifecycleStatus: null,
+    homeCountry: null,
+    israelCity: null,
+    accommodationArea: null,
+    arrivalDate: null,
+    joinedAt: "2026-01-01T00:00:00.000Z",
+    checklist: { done: 1, total: 2, requiredDone: 1, requiredTotal: 2, percent: 50 },
+    ...over,
+  });
+
+  it("matches search against display name and handle, case-insensitively", () => {
+    const rows = [student({ userId: "a", displayName: "Rachel Cohen", handle: "rachel" })];
+    expect(filterStaffStudents(rows, { q: "rachel", groupId: "", onboarding: "" })).toHaveLength(1);
+    expect(filterStaffStudents(rows, { q: "COHEN", groupId: "", onboarding: "" })).toHaveLength(1);
+    expect(filterStaffStudents(rows, { q: "nobody", groupId: "", onboarding: "" })).toHaveLength(0);
+  });
+
+  it("filters by group id", () => {
+    const rows = [
+      student({ userId: "a", groups: [{ id: "g1", name: "A" }] }),
+      student({ userId: "b", groups: [{ id: "g2", name: "B" }] }),
+    ];
+    expect(filterStaffStudents(rows, { q: "", groupId: "g2", onboarding: "" }).map((s) => s.userId)).toEqual(["b"]);
+  });
+
+  it("filters by onboarding completion, respecting required-vs-optional", () => {
+    const rows = [
+      student({ userId: "done", checklist: { done: 2, total: 3, requiredDone: 2, requiredTotal: 2, percent: 67 } }),
+      student({ userId: "not-done", checklist: { done: 1, total: 3, requiredDone: 1, requiredTotal: 2, percent: 33 } }),
+    ];
+    expect(filterStaffStudents(rows, { q: "", groupId: "", onboarding: "complete" }).map((s) => s.userId)).toEqual([
+      "done",
+    ]);
+    expect(filterStaffStudents(rows, { q: "", groupId: "", onboarding: "incomplete" }).map((s) => s.userId)).toEqual([
+      "not-done",
+    ]);
+  });
+
+  it("combines filters", () => {
+    const rows = [
+      student({ userId: "a", displayName: "Rachel", groups: [{ id: "g1", name: "A" }] }),
+      student({ userId: "b", displayName: "Rachel", groups: [{ id: "g2", name: "B" }] }),
+    ];
+    expect(
+      filterStaffStudents(rows, { q: "rachel", groupId: "g2", onboarding: "" }).map((s) => s.userId),
+    ).toEqual(["b"]);
   });
 });

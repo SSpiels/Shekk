@@ -94,7 +94,6 @@ import { Route as StaffContentRouteImport } from './routes/staff/content'
 import { Route as StaffOnboardingRouteImport } from './routes/staff/onboarding'
 import { Route as StaffOverviewRouteImport } from './routes/staff/overview'
 import { Route as StaffSettingsRouteImport } from './routes/staff/settings'
-import { Route as StaffStudentsRouteImport } from './routes/staff/students'
 import { Route as StaffTeamRouteImport } from './routes/staff/team'
 import { Route as WhatsOnIndexRouteImport } from './routes/whats-on.index'
 import { Route as ApiAuthEmailWebhookRouteImport } from './routes/api/auth/email-webhook'
@@ -109,6 +108,8 @@ import { Route as ExploreServiceIdRouteImport } from './routes/explore/service.$
 import { Route as ServicesEsimIndexRouteImport } from './routes/services/esim.index'
 import { Route as ServicesEsimPlanIdRouteImport } from './routes/services/esim.$planId'
 import { Route as ServicesEsimMineRouteImport } from './routes/services/esim.mine'
+import { Route as StaffStudentsIndexRouteImport } from './routes/staff/students/index'
+import { Route as StaffStudentsStudentIdRouteImport } from './routes/staff/students/$studentId'
 import { Route as WhatsOnEventIdRouteImport } from './routes/whats-on.event.$id'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api/public/payments/webhook'
 import { Route as ApiPublicWebhooksAirwallexRouteImport } from './routes/api/public/webhooks/airwallex'
@@ -538,11 +539,6 @@ const StaffSettingsRoute = StaffSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => StaffRouteRoute,
 } as any)
-const StaffStudentsRoute = StaffStudentsRouteImport.update({
-  id: '/students',
-  path: '/students',
-  getParentRoute: () => StaffRouteRoute,
-} as any)
 const StaffTeamRoute = StaffTeamRouteImport.update({
   id: '/team',
   path: '/team',
@@ -612,6 +608,16 @@ const ServicesEsimMineRoute = ServicesEsimMineRouteImport.update({
   id: '/services/esim/mine',
   path: '/services/esim/mine',
   getParentRoute: () => rootRouteImport,
+} as any)
+const StaffStudentsIndexRoute = StaffStudentsIndexRouteImport.update({
+  id: '/students/',
+  path: '/students/',
+  getParentRoute: () => StaffRouteRoute,
+} as any)
+const StaffStudentsStudentIdRoute = StaffStudentsStudentIdRouteImport.update({
+  id: '/students/$studentId',
+  path: '/students/$studentId',
+  getParentRoute: () => StaffRouteRoute,
 } as any)
 const WhatsOnEventIdRoute = WhatsOnEventIdRouteImport.update({
   id: '/whats-on/event/$id',
@@ -707,7 +713,6 @@ export interface FileRoutesByFullPath {
   '/staff/onboarding': typeof StaffOnboardingRoute
   '/staff/overview': typeof StaffOverviewRoute
   '/staff/settings': typeof StaffSettingsRoute
-  '/staff/students': typeof StaffStudentsRoute
   '/staff/team': typeof StaffTeamRoute
   '/admin/': typeof AdminIndexRoute
   '/before-you-fly/': typeof BeforeYouFlyIndexRoute
@@ -728,11 +733,13 @@ export interface FileRoutesByFullPath {
   '/explore/service/$id': typeof ExploreServiceIdRoute
   '/services/esim/$planId': typeof ServicesEsimPlanIdRoute
   '/services/esim/mine': typeof ServicesEsimMineRoute
+  '/staff/students/$studentId': typeof StaffStudentsStudentIdRoute
   '/whats-on/event/$id': typeof WhatsOnEventIdRoute
   '/explore/fitness/': typeof ExploreFitnessIndexRoute
   '/explore/idf/': typeof ExploreIdfIndexRoute
   '/explore/map/': typeof ExploreMapIndexRoute
   '/services/esim/': typeof ServicesEsimIndexRoute
+  '/staff/students/': typeof StaffStudentsIndexRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/webhooks/airwallex': typeof ApiPublicWebhooksAirwallexRoute
 }
@@ -809,7 +816,6 @@ export interface FileRoutesByTo {
   '/staff/onboarding': typeof StaffOnboardingRoute
   '/staff/overview': typeof StaffOverviewRoute
   '/staff/settings': typeof StaffSettingsRoute
-  '/staff/students': typeof StaffStudentsRoute
   '/staff/team': typeof StaffTeamRoute
   '/admin': typeof AdminIndexRoute
   '/before-you-fly': typeof BeforeYouFlyIndexRoute
@@ -830,11 +836,13 @@ export interface FileRoutesByTo {
   '/explore/service/$id': typeof ExploreServiceIdRoute
   '/services/esim/$planId': typeof ServicesEsimPlanIdRoute
   '/services/esim/mine': typeof ServicesEsimMineRoute
+  '/staff/students/$studentId': typeof StaffStudentsStudentIdRoute
   '/whats-on/event/$id': typeof WhatsOnEventIdRoute
   '/explore/fitness': typeof ExploreFitnessIndexRoute
   '/explore/idf': typeof ExploreIdfIndexRoute
   '/explore/map': typeof ExploreMapIndexRoute
   '/services/esim': typeof ServicesEsimIndexRoute
+  '/staff/students': typeof StaffStudentsIndexRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/webhooks/airwallex': typeof ApiPublicWebhooksAirwallexRoute
 }
@@ -915,7 +923,6 @@ export interface FileRoutesById {
   '/staff/onboarding': typeof StaffOnboardingRoute
   '/staff/overview': typeof StaffOverviewRoute
   '/staff/settings': typeof StaffSettingsRoute
-  '/staff/students': typeof StaffStudentsRoute
   '/staff/team': typeof StaffTeamRoute
   '/admin/': typeof AdminIndexRoute
   '/before-you-fly/': typeof BeforeYouFlyIndexRoute
@@ -936,11 +943,13 @@ export interface FileRoutesById {
   '/explore/service/$id': typeof ExploreServiceIdRoute
   '/services/esim/$planId': typeof ServicesEsimPlanIdRoute
   '/services/esim/mine': typeof ServicesEsimMineRoute
+  '/staff/students/$studentId': typeof StaffStudentsStudentIdRoute
   '/whats-on/event/$id': typeof WhatsOnEventIdRoute
   '/explore/fitness/': typeof ExploreFitnessIndexRoute
   '/explore/idf/': typeof ExploreIdfIndexRoute
   '/explore/map/': typeof ExploreMapIndexRoute
   '/services/esim/': typeof ServicesEsimIndexRoute
+  '/staff/students/': typeof StaffStudentsIndexRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
   '/api/public/webhooks/airwallex': typeof ApiPublicWebhooksAirwallexRoute
 }
@@ -1022,7 +1031,6 @@ export interface FileRouteTypes {
     | '/staff/onboarding'
     | '/staff/overview'
     | '/staff/settings'
-    | '/staff/students'
     | '/staff/team'
     | '/admin/'
     | '/before-you-fly/'
@@ -1043,11 +1051,13 @@ export interface FileRouteTypes {
     | '/explore/service/$id'
     | '/services/esim/$planId'
     | '/services/esim/mine'
+    | '/staff/students/$studentId'
     | '/whats-on/event/$id'
     | '/explore/fitness/'
     | '/explore/idf/'
     | '/explore/map/'
     | '/services/esim/'
+    | '/staff/students/'
     | '/api/public/payments/webhook'
     | '/api/public/webhooks/airwallex'
   fileRoutesByTo: FileRoutesByTo
@@ -1124,7 +1134,6 @@ export interface FileRouteTypes {
     | '/staff/onboarding'
     | '/staff/overview'
     | '/staff/settings'
-    | '/staff/students'
     | '/staff/team'
     | '/admin'
     | '/before-you-fly'
@@ -1145,11 +1154,13 @@ export interface FileRouteTypes {
     | '/explore/service/$id'
     | '/services/esim/$planId'
     | '/services/esim/mine'
+    | '/staff/students/$studentId'
     | '/whats-on/event/$id'
     | '/explore/fitness'
     | '/explore/idf'
     | '/explore/map'
     | '/services/esim'
+    | '/staff/students'
     | '/api/public/payments/webhook'
     | '/api/public/webhooks/airwallex'
   id:
@@ -1229,7 +1240,6 @@ export interface FileRouteTypes {
     | '/staff/onboarding'
     | '/staff/overview'
     | '/staff/settings'
-    | '/staff/students'
     | '/staff/team'
     | '/admin/'
     | '/before-you-fly/'
@@ -1250,11 +1260,13 @@ export interface FileRouteTypes {
     | '/explore/service/$id'
     | '/services/esim/$planId'
     | '/services/esim/mine'
+    | '/staff/students/$studentId'
     | '/whats-on/event/$id'
     | '/explore/fitness/'
     | '/explore/idf/'
     | '/explore/map/'
     | '/services/esim/'
+    | '/staff/students/'
     | '/api/public/payments/webhook'
     | '/api/public/webhooks/airwallex'
   fileRoutesById: FileRoutesById
@@ -1937,13 +1949,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StaffSettingsRouteImport
       parentRoute: typeof StaffRouteRoute
     }
-    '/staff/students': {
-      id: '/staff/students'
-      path: '/students'
-      fullPath: '/staff/students'
-      preLoaderRoute: typeof StaffStudentsRouteImport
-      parentRoute: typeof StaffRouteRoute
-    }
     '/staff/team': {
       id: '/staff/team'
       path: '/team'
@@ -2042,6 +2047,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ServicesEsimMineRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/staff/students/': {
+      id: '/staff/students/'
+      path: '/students'
+      fullPath: '/staff/students/'
+      preLoaderRoute: typeof StaffStudentsIndexRouteImport
+      parentRoute: typeof StaffRouteRoute
+    }
+    '/staff/students/$studentId': {
+      id: '/staff/students/$studentId'
+      path: '/students/$studentId'
+      fullPath: '/staff/students/$studentId'
+      preLoaderRoute: typeof StaffStudentsStudentIdRouteImport
+      parentRoute: typeof StaffRouteRoute
+    }
     '/whats-on/event/$id': {
       id: '/whats-on/event/$id'
       path: '/whats-on/event/$id'
@@ -2105,9 +2124,10 @@ interface StaffRouteRouteChildren {
   StaffOnboardingRoute: typeof StaffOnboardingRoute
   StaffOverviewRoute: typeof StaffOverviewRoute
   StaffSettingsRoute: typeof StaffSettingsRoute
-  StaffStudentsRoute: typeof StaffStudentsRoute
   StaffTeamRoute: typeof StaffTeamRoute
   StaffIndexRoute: typeof StaffIndexRoute
+  StaffStudentsStudentIdRoute: typeof StaffStudentsStudentIdRoute
+  StaffStudentsIndexRoute: typeof StaffStudentsIndexRoute
 }
 
 const StaffRouteRouteChildren: StaffRouteRouteChildren = {
@@ -2117,9 +2137,10 @@ const StaffRouteRouteChildren: StaffRouteRouteChildren = {
   StaffOnboardingRoute: StaffOnboardingRoute,
   StaffOverviewRoute: StaffOverviewRoute,
   StaffSettingsRoute: StaffSettingsRoute,
-  StaffStudentsRoute: StaffStudentsRoute,
   StaffTeamRoute: StaffTeamRoute,
   StaffIndexRoute: StaffIndexRoute,
+  StaffStudentsStudentIdRoute: StaffStudentsStudentIdRoute,
+  StaffStudentsIndexRoute: StaffStudentsIndexRoute,
 }
 
 const StaffRouteRouteWithChildren = StaffRouteRoute._addFileChildren(

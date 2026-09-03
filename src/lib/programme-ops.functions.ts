@@ -411,6 +411,24 @@ export const staffListParticipants = createServerFn({ method: "POST" })
     return listParticipants(context.supabase, context.userId, data.cohortId);
   });
 
+/* ─────────────────────────────── Programme OS: Students ────────────────────────── */
+
+export const staffStudentRoster = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ cohortId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffStudentRoster: roster } = await import("@/lib/programme-ops.server");
+    return roster(context.supabase, context.userId, data.cohortId);
+  });
+
+export const staffStudentProfile = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ cohortId: uuid, studentId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffStudentProfile: profile } = await import("@/lib/programme-ops.server");
+    return profile(context.supabase, context.userId, data.cohortId, data.studentId);
+  });
+
 export const staffUpsertContent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => contentInput.parse(d))

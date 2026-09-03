@@ -11,7 +11,9 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  checklistProgress,
   DEFAULT_CHECKLIST,
+  type ChecklistProgress,
   emptyHub,
   emptyStaffSession,
   everyone,
@@ -35,6 +37,10 @@ import {
   type StaffPermission,
   type StaffRole,
   type StaffSession,
+  type StaffStudentChecklistItem,
+  type StaffStudentGroupRef,
+  type StaffStudentProfile,
+  type StaffStudentSummary,
   type StaffWorkspace,
 } from "./programme/logic";
 
@@ -194,7 +200,11 @@ export async function resolveStaffSession(db: Db, userId: string): Promise<Staff
         role: String(r["role"]) as StaffRole,
         permissions: ((r["permissions"] ?? []) as string[]).map(String) as StaffPermission[],
         cohort: cohort
-          ? { id: String(cohort["id"]), name: String(cohort["name"]), year: (cohort["year"] as string | null) ?? null }
+          ? {
+              id: String(cohort["id"]),
+              name: String(cohort["name"]),
+              year: (cohort["year"] as string | null) ?? null,
+            }
           : null,
         createdAt: String(r["created_at"]),
       },
@@ -1258,59 +1268,336 @@ export async function listParticipants(db: Db, userId: string, cohortId: string)
  */
 export async function rosterForCohort(cohortId: string): Promise<Participant[]> {
   const service = await adminDb();
-  const { data: members } = await service
-    .from("programme_memberships")
-    .select("user_id, joined_at")
-    .eq("cohort_id", cohortId)
-    .eq("status", "active");
-  const rows = (members ?? []) as Row[];
-  if (!rows.length) return [];
-  const ids = rows.map((r) => String(r["user_id"]));
+  const raw = await loadCohortRosterRaw(service, cohortId);
+  const itemIds = new Set(raw.checklistItems.map((i) => String(i["id"])));
 
-  const [{ data: handles }, { data: travel }, { data: groups }, { data: items }, { data: progress }] =
-    await Promise.all([
-      service.from("member_handles").select("user_id, handle, display_name").in("user_id", ids),
-      service.from("member_travel").select("user_id, display_name").in("user_id", ids),
-      service.from("programme_groups").select("id").eq("cohort_id", cohortId),
-      service.from("programme_checklist_items").select("id").eq("cohort_id", cohortId),
-      service.from("programme_checklist_progress").select("user_id, item_id, done").in("user_id", ids),
-    ]);
-
-  const groupIds = ((groups ?? []) as Row[]).map((g) => String(g["id"]));
-  const { data: gm } = groupIds.length
-    ? await service.from("programme_group_members").select("group_id, user_id").in("group_id", groupIds)
-    : { data: [] as Row[] };
-
-  const itemIds = new Set(((items ?? []) as Row[]).map((i) => String(i["id"])));
-  const doneBy = new Map<string, number>();
-  for (const p of (progress ?? []) as Row[]) {
-    if (!p["done"] || !itemIds.has(String(p["item_id"]))) continue;
-    const uid = String(p["user_id"]);
-    doneBy.set(uid, (doneBy.get(uid) ?? 0) + 1);
-  }
-  const handleBy = new Map(((handles ?? []) as Row[]).map((h) => [String(h["user_id"]), h]));
-  const travelBy = new Map(((travel ?? []) as Row[]).map((t) => [String(t["user_id"]), t]));
-  const groupsBy = new Map<string, string[]>();
-  for (const g of (gm ?? []) as Row[]) {
-    const uid = String(g["user_id"]);
-    groupsBy.set(uid, [...(groupsBy.get(uid) ?? []), String(g["group_id"])]);
-  }
-
-  return rows.map((r) => {
+  return raw.memberships.map((r) => {
     const uid = String(r["user_id"]);
-    const h = handleBy.get(uid);
-    const t = travelBy.get(uid);
+    const h = raw.handleBy.get(uid);
+    const t = raw.travelBy.get(uid);
     const name =
-      (t && s(t, "display_name")) || (h && s(h, "display_name")) || (h ? `@${h["handle"]}` : "Participant");
+      (t && s(t, "display_name")) ||
+      (h && s(h, "display_name")) ||
+      (h ? `@${h["handle"]}` : "Participant");
+    const doneCount = (raw.progressByUser.get(uid) ?? []).filter(
+      (p) => p["done"] && itemIds.has(String(p["item_id"])),
+    ).length;
     return {
       userId: uid,
       name: name ?? "Participant",
       handle: h ? String(h["handle"]) : null,
       joinedAt: String(r["joined_at"]),
-      groupIds: groupsBy.get(uid) ?? [],
-      checklistDone: doneBy.get(uid) ?? 0,
+      groupIds: raw.groupsByUser.get(uid) ?? [],
+      checklistDone: doneCount,
     };
   });
+}
+
+/* ─────────────────────── Students (Programme OS staff view) ──────────────────────
+ * Never touches member_profiles (KYC/financial) — only member_handles and
+ * member_travel, the same two tables rosterForCohort() above already reads.
+ * Every function here returns the DTOs from lib/programme/logic.ts, never a
+ * raw table row.
+ */
+
+type CohortRosterRaw = {
+  memberships: Row[];
+  handleBy: Map<string, Row>;
+  travelBy: Map<string, Row>;
+  groups: Row[];
+  groupsByUser: Map<string, string[]>;
+  checklistItems: Row[];
+  progressByUser: Map<string, Row[]>;
+  /** null = programme_student_details isn't live in this environment — see tryLoadStudentDetails. */
+  detailsByUser: Map<string, Row> | null;
+};
+
+/**
+ * One round trip per table for the whole cohort — never one query per
+ * student. Shared by rosterForCohort() (mobile "People" tab) and
+ * staffStudentRoster() (Programme OS) so neither duplicates the join logic.
+ */
+async function loadCohortRosterRaw(service: Db, cohortId: string): Promise<CohortRosterRaw> {
+  const empty: CohortRosterRaw = {
+    memberships: [],
+    handleBy: new Map(),
+    travelBy: new Map(),
+    groups: [],
+    groupsByUser: new Map(),
+    checklistItems: [],
+    progressByUser: new Map(),
+    detailsByUser: new Map(),
+  };
+
+  const { data: members } = await service
+    .from("programme_memberships")
+    .select("user_id, joined_at")
+    .eq("cohort_id", cohortId)
+    .eq("status", "active");
+  const memberships = (members ?? []) as Row[];
+  if (!memberships.length) return empty;
+  const ids = memberships.map((r) => String(r["user_id"]));
+
+  const [
+    { data: handles },
+    { data: travel },
+    { data: groups },
+    { data: items },
+    { data: progress },
+  ] = await Promise.all([
+    service.from("member_handles").select("user_id, handle, display_name").in("user_id", ids),
+    service
+      .from("member_travel")
+      .select("user_id, display_name, home_country, israel_city, accommodation_area, arrival_date")
+      .in("user_id", ids),
+    service
+      .from("programme_groups")
+      .select("id, name")
+      .eq("cohort_id", cohortId)
+      .order("sort_order"),
+    service.from("programme_checklist_items").select("id, required").eq("cohort_id", cohortId),
+    service
+      .from("programme_checklist_progress")
+      .select("user_id, item_id, done")
+      .in("user_id", ids),
+  ]);
+
+  const groupRows = (groups ?? []) as Row[];
+  const groupIds = groupRows.map((g) => String(g["id"]));
+  const { data: gm } = groupIds.length
+    ? await service.from("programme_group_members").select("group_id, user_id").in("group_id", groupIds)
+    : { data: [] as Row[] };
+
+  const groupsByUser = new Map<string, string[]>();
+  for (const g of (gm ?? []) as Row[]) {
+    const uid = String(g["user_id"]);
+    groupsByUser.set(uid, [...(groupsByUser.get(uid) ?? []), String(g["group_id"])]);
+  }
+
+  const progressByUser = new Map<string, Row[]>();
+  for (const p of (progress ?? []) as Row[]) {
+    const uid = String(p["user_id"]);
+    progressByUser.set(uid, [...(progressByUser.get(uid) ?? []), p]);
+  }
+
+  return {
+    memberships,
+    handleBy: new Map(((handles ?? []) as Row[]).map((h) => [String(h["user_id"]), h])),
+    travelBy: new Map(((travel ?? []) as Row[]).map((t) => [String(t["user_id"]), t])),
+    groups: groupRows,
+    groupsByUser,
+    checklistItems: (items ?? []) as Row[],
+    progressByUser,
+    detailsByUser: await tryLoadStudentDetails(service, cohortId, ids),
+  };
+}
+
+/**
+ * programme_student_details may not exist in this environment yet (its
+ * migration isn't applied everywhere) — degrade to "lifecycle data
+ * unavailable" rather than failing the whole roster/profile. PGRST205 is
+ * PostgREST's "table not in schema cache" — genuinely absent, not a
+ * permission problem. Any other error is unexpected and worth knowing about,
+ * but still shouldn't take down a page that doesn't strictly need it.
+ */
+async function tryLoadStudentDetails(
+  service: Db,
+  cohortId: string,
+  userIds: string[],
+): Promise<Map<string, Row> | null> {
+  if (!userIds.length) return new Map();
+  const { data, error } = await service
+    .from("programme_student_details")
+    .select("user_id, status")
+    .eq("cohort_id", cohortId)
+    .in("user_id", userIds);
+  if (error) {
+    if (error.code !== "PGRST205") {
+      console.error("[programme] programme_student_details query failed", error);
+    }
+    return null;
+  }
+  return new Map(((data ?? []) as Row[]).map((d) => [String(d["user_id"]), d]));
+}
+
+function summariseStudent(
+  uid: string,
+  membershipRow: Row,
+  raw: Pick<CohortRosterRaw, "handleBy" | "travelBy" | "groups" | "groupsByUser" | "detailsByUser">,
+  checklist: ChecklistProgress,
+): StaffStudentSummary {
+  const h = raw.handleBy.get(uid);
+  const t = raw.travelBy.get(uid);
+  const displayName =
+    (t && s(t, "display_name")) ||
+    (h && s(h, "display_name")) ||
+    (h ? `@${h["handle"]}` : "Student");
+  const groupsById = new Map(raw.groups.map((g) => [String(g["id"]), g]));
+  const groups: StaffStudentGroupRef[] = (raw.groupsByUser.get(uid) ?? [])
+    .map((gid) => groupsById.get(gid))
+    .filter((g): g is Row => Boolean(g))
+    .map((g) => ({ id: String(g["id"]), name: String(g["name"]) }));
+  const details = raw.detailsByUser?.get(uid) ?? null;
+
+  return {
+    userId: uid,
+    displayName: displayName ?? "Student",
+    handle: h ? String(h["handle"]) : null,
+    groups,
+    lifecycleStatus: details ? String(details["status"]) : null,
+    homeCountry: t ? s(t, "home_country") : null,
+    israelCity: t ? s(t, "israel_city") : null,
+    accommodationArea: t ? s(t, "accommodation_area") : null,
+    arrivalDate: t ? s(t, "arrival_date") : null,
+    joinedAt: String(membershipRow["joined_at"]),
+    checklist,
+  };
+}
+
+/** The Students roster: one summary row per active member, no per-student round trips. */
+export async function staffStudentRoster(
+  db: Db,
+  userId: string,
+  cohortId: string,
+): Promise<StaffStudentSummary[]> {
+  await requireStaff(db, userId, cohortId, "participants");
+  const service = await adminDb();
+  const raw = await loadCohortRosterRaw(service, cohortId);
+  const itemIds = new Set(raw.checklistItems.map((i) => String(i["id"])));
+
+  return raw.memberships.map((m) => {
+    const uid = String(m["user_id"]);
+    const doneItemIds = new Set(
+      (raw.progressByUser.get(uid) ?? [])
+        .filter((p) => p["done"] && itemIds.has(String(p["item_id"])))
+        .map((p) => String(p["item_id"])),
+    );
+    const checklist = checklistProgress(
+      raw.checklistItems.map((i) => ({
+        required: Boolean(i["required"]),
+        done: doneItemIds.has(String(i["id"])),
+      })),
+    );
+    return summariseStudent(uid, m, raw, checklist);
+  });
+}
+
+/**
+ * One student's full staff-facing profile. Never trusts the caller's claim
+ * that `studentId` belongs to `cohortId` — the active-membership lookup
+ * below is the check, not the input. Returns null (→ 404 in the route) for
+ * a student who isn't an active member of this specific cohort, whether
+ * they don't exist, belong to a different cohort, or already left.
+ */
+export async function staffStudentProfile(
+  db: Db,
+  userId: string,
+  cohortId: string,
+  studentId: string,
+): Promise<StaffStudentProfile | null> {
+  await requireStaff(db, userId, cohortId, "participants");
+  const service = await adminDb();
+
+  const { data: membership } = await service
+    .from("programme_memberships")
+    .select("user_id, joined_at")
+    .eq("cohort_id", cohortId)
+    .eq("user_id", studentId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (!membership) return null;
+
+  const [
+    { data: cohortRow },
+    { data: handle },
+    { data: travel },
+    { data: memberGroups },
+    { data: items },
+    { data: progress },
+  ] = await Promise.all([
+    service
+      .from("programme_cohorts")
+      .select("id, name, programme_id")
+      .eq("id", cohortId)
+      .maybeSingle(),
+    service
+      .from("member_handles")
+      .select("user_id, handle, display_name")
+      .eq("user_id", studentId)
+      .maybeSingle(),
+    service
+      .from("member_travel")
+      .select("user_id, display_name, home_country, israel_city, accommodation_area, arrival_date")
+      .eq("user_id", studentId)
+      .maybeSingle(),
+    service.from("programme_group_members").select("group_id").eq("user_id", studentId),
+    service
+      .from("programme_checklist_items")
+      .select("id, item_key, title, details, due_on, required, action_url")
+      .eq("cohort_id", cohortId)
+      .order("sort_order"),
+    service.from("programme_checklist_progress").select("item_id, done").eq("user_id", studentId),
+  ]);
+
+  const cohort = cohortRow as Row | null;
+  if (!cohort) return null;
+
+  const groupIds = ((memberGroups ?? []) as Row[]).map((g) => String(g["group_id"]));
+  const { data: groupRows } = groupIds.length
+    ? await service.from("programme_groups").select("id, name").in("id", groupIds)
+    : { data: [] as Row[] };
+
+  const [{ data: programmeRow }, detailsByUser] = await Promise.all([
+    service
+      .from("programmes")
+      .select("id, name")
+      .eq("id", String(cohort["programme_id"]))
+      .maybeSingle(),
+    tryLoadStudentDetails(service, cohortId, [studentId]),
+  ]);
+  const programme = programmeRow as Row | null;
+
+  const doneItemIds = new Set(
+    ((progress ?? []) as Row[]).filter((p) => p["done"]).map((p) => String(p["item_id"])),
+  );
+  const itemRows = (items ?? []) as Row[];
+  const checklistItems: StaffStudentChecklistItem[] = itemRows.map((i) => ({
+    id: String(i["id"]),
+    itemKey: String(i["item_key"]),
+    title: String(i["title"]),
+    details: s(i, "details"),
+    dueOn: s(i, "due_on"),
+    required: Boolean(i["required"]),
+    done: doneItemIds.has(String(i["id"])),
+    actionUrl: s(i, "action_url"),
+  }));
+  const checklist = checklistProgress(
+    itemRows.map((i) => ({
+      required: Boolean(i["required"]),
+      done: doneItemIds.has(String(i["id"])),
+    })),
+  );
+
+  const raw: Pick<
+    CohortRosterRaw,
+    "handleBy" | "travelBy" | "groups" | "groupsByUser" | "detailsByUser"
+  > = {
+    handleBy: handle ? new Map([[studentId, handle as Row]]) : new Map(),
+    travelBy: travel ? new Map([[studentId, travel as Row]]) : new Map(),
+    groups: (groupRows ?? []) as Row[],
+    groupsByUser: new Map([[studentId, groupIds]]),
+    detailsByUser,
+  };
+  const summary = summariseStudent(studentId, membership as Row, raw, checklist);
+
+  return {
+    ...summary,
+    programmeId: String(programme?.["id"] ?? cohort["programme_id"]),
+    programmeName: String(programme?.["name"] ?? "Programme"),
+    cohortId: String(cohort["id"]),
+    cohortName: String(cohort["name"]),
+    checklistItems,
+  };
 }
 
 export type SimpleContentInput = {

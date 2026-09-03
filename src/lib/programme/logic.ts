@@ -536,7 +536,22 @@ export function pendingAcknowledgements(hub: ProgrammeHub) {
   ];
 }
 
-export function checklistProgress(items: ChecklistItem[]) {
+export type ChecklistProgress = {
+  done: number;
+  total: number;
+  requiredDone: number;
+  requiredTotal: number;
+  percent: number;
+};
+
+/**
+ * Structural on purpose (Pick, not the full ChecklistItem) so a per-student
+ * staff query can reuse this without fabricating audience/doneCount/etc
+ * fields it never fetched — see StaffStudentSummary in programme-ops.server.ts.
+ */
+export function checklistProgress(
+  items: Pick<ChecklistItem, "required" | "done">[],
+): ChecklistProgress {
   const required = items.filter((i) => i.required);
   const done = items.filter((i) => i.done).length;
   const requiredDone = required.filter((i) => i.done).length;
@@ -547,6 +562,90 @@ export function checklistProgress(items: ChecklistItem[]) {
     requiredTotal: required.length,
     percent: items.length ? Math.round((done / items.length) * 100) : 0,
   };
+}
+
+/**
+ * "Onboarding complete" respects required-vs-optional: a student with every
+ * required item done is complete even with optional items outstanding. If a
+ * cohort somehow has zero required items, fall back to the overall percent
+ * rather than declaring everyone complete by default.
+ */
+export function onboardingComplete(c: ChecklistProgress): boolean {
+  if (c.requiredTotal === 0) return c.total > 0 && c.percent === 100;
+  return c.requiredDone === c.requiredTotal;
+}
+
+/* ─────────────────────── Students (Programme OS staff view) ──────────────────────
+ * DTOs the server projects onto — never a raw member_profiles/member_travel row.
+ * See lib/programme-ops.server.ts's staffStudentRoster/staffStudentProfile for
+ * where these are actually assembled, and its module comment for why
+ * member_profiles (KYC/financial) is never touched by any of it. */
+
+export type StaffStudentGroupRef = { id: string; name: string };
+
+export type StaffStudentSummary = {
+  userId: string;
+  displayName: string;
+  handle: string | null;
+  /** A student may belong to more than one group — never assume [0] is "the" group. */
+  groups: StaffStudentGroupRef[];
+  /** null = programme_student_details has no row yet, or the table isn't live in this
+   *  environment. Never backfilled from programme_memberships.status — see the note
+   *  on that column's two meanings further up this file. */
+  lifecycleStatus: string | null;
+  homeCountry: string | null;
+  israelCity: string | null;
+  accommodationArea: string | null;
+  arrivalDate: string | null;
+  joinedAt: string;
+  checklist: ChecklistProgress;
+};
+
+export type StaffStudentChecklistItem = {
+  id: string;
+  itemKey: string;
+  title: string;
+  details: string | null;
+  dueOn: string | null;
+  required: boolean;
+  done: boolean;
+  actionUrl: string | null;
+};
+
+export type StaffStudentProfile = StaffStudentSummary & {
+  programmeId: string;
+  programmeName: string;
+  cohortId: string;
+  cohortName: string;
+  checklistItems: StaffStudentChecklistItem[];
+};
+
+export type StaffOnboardingFilter = "" | "complete" | "incomplete";
+
+export type StaffStudentFilters = {
+  q: string;
+  groupId: string;
+  onboarding: StaffOnboardingFilter;
+};
+
+export const emptyStaffStudentFilters: StaffStudentFilters = { q: "", groupId: "", onboarding: "" };
+
+/** Pure so /staff/students can stay URL-driven — filters are search params, not local state. */
+export function filterStaffStudents(
+  students: StaffStudentSummary[],
+  filters: StaffStudentFilters,
+): StaffStudentSummary[] {
+  const q = filters.q.trim().toLowerCase();
+  return students.filter((s) => {
+    if (q && !`${s.displayName} ${s.handle ?? ""}`.toLowerCase().includes(q)) return false;
+    if (filters.groupId && !s.groups.some((g) => g.id === filters.groupId)) return false;
+    if (filters.onboarding) {
+      const complete = onboardingComplete(s.checklist);
+      if (filters.onboarding === "complete" && !complete) return false;
+      if (filters.onboarding === "incomplete" && complete) return false;
+    }
+    return true;
+  });
 }
 
 /** Can this participant cast (or change) a vote right now, and why not? */
