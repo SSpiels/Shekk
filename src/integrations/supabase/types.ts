@@ -2113,6 +2113,56 @@ export type Database = {
           },
         ]
       }
+      programme_student_details: {
+        Row: {
+          cohort_id: string
+          created_at: string
+          emergency_contact_name: string | null
+          emergency_contact_phone: string | null
+          emergency_contact_relationship: string | null
+          flight_arrival_at: string | null
+          flight_number: string | null
+          id: string
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          cohort_id: string
+          created_at?: string
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_relationship?: string | null
+          flight_arrival_at?: string | null
+          flight_number?: string | null
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          cohort_id?: string
+          created_at?: string
+          emergency_contact_name?: string | null
+          emergency_contact_phone?: string | null
+          emergency_contact_relationship?: string | null
+          flight_arrival_at?: string | null
+          flight_number?: string | null
+          id?: string
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "programme_student_details_cohort_id_fkey"
+            columns: ["cohort_id"]
+            isOneToOne: false
+            referencedRelation: "programme_cohorts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       programme_vote_options: {
         Row: {
           capacity: number | null
