@@ -111,7 +111,13 @@ export function pickActiveProgrammeId(workspaces: StaffWorkspace[]): string | nu
 export type AudienceKind = "everyone" | "groups" | "individuals";
 
 export type EventStatus =
-  "scheduled" | "confirmed" | "tentative" | "delayed" | "moved" | "cancelled" | "completed";
+  | "scheduled"
+  | "confirmed"
+  | "tentative"
+  | "delayed"
+  | "moved"
+  | "cancelled"
+  | "completed";
 
 export type NotifyLevel = "silent" | "notify" | "urgent";
 
@@ -161,12 +167,7 @@ export type Audience = { kind: AudienceKind; groupIds: string[]; userIds: string
 
 export const everyone: Audience = { kind: "everyone", groupIds: [], userIds: [] };
 
-export type ProgrammeGroup = {
-  id: string;
-  name: string;
-  description: string | null;
-  memberCount: number;
-};
+export type ProgrammeGroup = { id: string; name: string; description: string | null; memberCount: number };
 
 export type EventChange = {
   id: string;
@@ -518,14 +519,12 @@ export function openVotes(votes: ProgrammeVote[]): ProgrammeVote[] {
 
 export function pendingAcknowledgements(hub: ProgrammeHub) {
   return [
-    ...hub.announcements
-      .filter((a) => a.requiresAck && !a.acknowledged)
-      .map((a) => ({
-        subjectType: "announcement" as const,
-        id: a.id,
-        title: a.title,
-        priority: a.priority,
-      })),
+    ...hub.announcements.filter((a) => a.requiresAck && !a.acknowledged).map((a) => ({
+      subjectType: "announcement" as const,
+      id: a.id,
+      title: a.title,
+      priority: a.priority,
+    })),
     ...hub.events
       .filter((e) => e.requiresAck && !e.acknowledged && e.status !== "cancelled")
       .map((e) => ({
@@ -588,16 +587,12 @@ export function placeDirectionsUrl(place: {
 }): string | null {
   const base = "https://www.google.com/maps/dir/?api=1";
   if (place.latitude != null && place.longitude != null) {
-    const pid = place.googlePlaceId
-      ? `&destination_place_id=${encodeURIComponent(place.googlePlaceId)}`
-      : "";
+    const pid = place.googlePlaceId ? `&destination_place_id=${encodeURIComponent(place.googlePlaceId)}` : "";
     return `${base}&destination=${place.latitude},${place.longitude}${pid}`;
   }
   const text = place.address || place.label;
   if (!text) return null;
-  const pid = place.googlePlaceId
-    ? `&destination_place_id=${encodeURIComponent(place.googlePlaceId)}`
-    : "";
+  const pid = place.googlePlaceId ? `&destination_place_id=${encodeURIComponent(place.googlePlaceId)}` : "";
   return `${base}&destination=${encodeURIComponent(text)}${pid}`;
 }
 
@@ -714,9 +709,7 @@ export type FeedItem = {
   vote: ProgrammeVote | null;
 };
 
-export function announcementKind(
-  a: Pick<ProgrammeAnnouncementRow, "priority" | "requiresAck">,
-): PostKind {
+export function announcementKind(a: Pick<ProgrammeAnnouncementRow, "priority" | "requiresAck">): PostKind {
   if (a.priority === "urgent") return "urgent";
   if (a.requiresAck) return "confirmation";
   return "announcement";
@@ -773,8 +766,7 @@ export type PendingAction = {
  */
 export function pendingActions(hub: ProgrammeHub, now = Date.now()): PendingAction[] {
   const soon = now + 72 * 3_600_000;
-  const live = (e: ProgrammeEvent) =>
-    e.status !== "cancelled" && new Date(e.startsAt).getTime() > now;
+  const live = (e: ProgrammeEvent) => e.status !== "cancelled" && new Date(e.startsAt).getTime() > now;
 
   const acks: PendingAction[] = [
     ...hub.announcements
@@ -848,9 +840,7 @@ export const ACTIVITY_KIND_LABEL: Record<ActivityKind, string> = {
   limited: "Limited spaces",
 };
 
-export function activityKindOf(
-  event: Pick<ProgrammeEvent, "mandatory" | "capacity">,
-): ActivityKind {
+export function activityKindOf(event: Pick<ProgrammeEvent, "mandatory" | "capacity">): ActivityKind {
   if (event.capacity && event.capacity > 0) return "limited";
   return event.mandatory ? "mandatory" : "optional";
 }
@@ -886,8 +876,7 @@ function parseWhen(value: string): Date | null {
 }
 
 const clockOf = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-const dateOf = (d: Date) =>
-  d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+const dateOf = (d: Date) => d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
 
 function shiftWords(minutes: number): string {
   const abs = Math.abs(minutes);

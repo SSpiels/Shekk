@@ -15,6 +15,7 @@ import {
   emptyHub,
   emptyStaffSession,
   everyone,
+  pickActiveProgrammeId,
   type Audience,
   type AudienceKind,
   type ChecklistItem,
@@ -30,7 +31,6 @@ import {
   type ProgrammeNotification,
   type ProgrammePlace,
   type ProgrammeVote,
-  pickActiveProgrammeId,
   type StaffContext,
   type StaffPermission,
   type StaffRole,
@@ -54,12 +54,7 @@ async function adminDb(): Promise<Db> {
 
 type AudienceIndex = Map<string, Audience>;
 
-function audienceFor(
-  index: AudienceIndex,
-  subjectType: string,
-  id: string,
-  kind: string | null,
-): Audience {
+function audienceFor(index: AudienceIndex, subjectType: string, id: string, kind: string | null): Audience {
   const stored = index.get(`${subjectType}:${id}`);
   return {
     kind: (kind ?? "everyone") as AudienceKind,
@@ -93,11 +88,7 @@ async function writeAudience(
   audience: Audience | undefined,
 ) {
   if (!audience) return;
-  await db
-    .from("programme_audiences")
-    .delete()
-    .eq("subject_type", subjectType)
-    .eq("subject_id", subjectId);
+  await db.from("programme_audiences").delete().eq("subject_type", subjectType).eq("subject_id", subjectId);
   if (audience.kind === "everyone") return;
   const rows: Row[] = [
     ...audience.groupIds.map((g) => ({
@@ -121,11 +112,7 @@ async function writeAudience(
 
 /* ────────────────────────────── Staff context ────────────────────────────── */
 
-export async function staffContext(
-  db: Db,
-  userId: string,
-  cohortId: string | null,
-): Promise<StaffContext | null> {
+export async function staffContext(db: Db, userId: string, cohortId: string | null): Promise<StaffContext | null> {
   const { data } = await db
     .from("programme_staff")
     .select("programme_id, role, permissions")
@@ -207,11 +194,7 @@ export async function resolveStaffSession(db: Db, userId: string): Promise<Staff
         role: String(r["role"]) as StaffRole,
         permissions: ((r["permissions"] ?? []) as string[]).map(String) as StaffPermission[],
         cohort: cohort
-          ? {
-              id: String(cohort["id"]),
-              name: String(cohort["name"]),
-              year: (cohort["year"] as string | null) ?? null,
-            }
+          ? { id: String(cohort["id"]), name: String(cohort["name"]), year: (cohort["year"] as string | null) ?? null }
           : null,
         createdAt: String(r["created_at"]),
       },
@@ -225,26 +208,20 @@ export async function resolveStaffSession(db: Db, userId: string): Promise<Staff
 
 /** Throws unless the caller really is staff on this cohort with this permission. */
 async function requireStaff(db: Db, userId: string, cohortId: string, perm: StaffPermission) {
-  const { data, error } = await db.rpc(
-    "cohort_staff_can" as never,
-    {
-      _cohort_id: cohortId,
-      _user_id: userId,
-      _perm: perm,
-    } as never,
-  );
+  const { data, error } = await db.rpc("cohort_staff_can" as never, {
+    _cohort_id: cohortId,
+    _user_id: userId,
+    _perm: perm,
+  } as never);
   if (error) throw new Error("Could not check your programme permissions");
   if (!data) throw new Error("You do not have permission to do that");
 }
 
 async function requireOwner(db: Db, userId: string, programmeId: string) {
-  const { data, error } = await db.rpc(
-    "is_programme_owner" as never,
-    {
-      _programme_id: programmeId,
-      _user_id: userId,
-    } as never,
-  );
+  const { data, error } = await db.rpc("is_programme_owner" as never, {
+    _programme_id: programmeId,
+    _user_id: userId,
+  } as never);
   if (error) throw new Error("Could not check your programme permissions");
   if (!data) throw new Error("Only the programme owner can do that");
 }
@@ -263,10 +240,7 @@ export async function readHub(db: Db, userId: string): Promise<ProgrammeHub> {
 
   // Staff who are not enrolled as participants still need their cohort.
   if (!cohortId) {
-    const { data: staffRows } = await db
-      .from("programme_staff")
-      .select("programme_id")
-      .eq("user_id", userId);
+    const { data: staffRows } = await db.from("programme_staff").select("programme_id").eq("user_id", userId);
     const programmeId = staffRows?.[0] ? String((staffRows[0] as Row)["programme_id"]) : null;
     if (!programmeId) return emptyHub;
     const { data: cohort } = await db
@@ -321,11 +295,7 @@ export async function readHub(db: Db, userId: string): Promise<ProgrammeHub> {
       .eq("cohort_id", cohortId)
       .order("pinned", { ascending: false })
       .order("published_at", { ascending: false }),
-    db
-      .from("programme_votes")
-      .select("*")
-      .eq("cohort_id", cohortId)
-      .order("created_at", { ascending: false }),
+    db.from("programme_votes").select("*").eq("cohort_id", cohortId).order("created_at", { ascending: false }),
     db.from("programme_vote_options").select("*").order("sort_order"),
     db.from("programme_vote_responses").select("vote_id, option_id, user_id"),
     db.from("programme_checklist_items").select("*").eq("cohort_id", cohortId).order("sort_order"),
@@ -333,10 +303,7 @@ export async function readHub(db: Db, userId: string): Promise<ProgrammeHub> {
     db.from("programme_documents").select("*").eq("cohort_id", cohortId).order("sort_order"),
     db.from("programme_contacts").select("*").eq("cohort_id", cohortId).order("sort_order"),
     db.from("programme_places").select("*").eq("cohort_id", cohortId).order("sort_order"),
-    db
-      .from("programme_acknowledgements")
-      .select("subject_type, subject_id, user_id")
-      .eq("cohort_id", cohortId),
+    db.from("programme_acknowledgements").select("subject_type, subject_id, user_id").eq("cohort_id", cohortId),
     db.from("programme_event_rsvps").select("event_id, user_id, response"),
     db
       .from("programme_event_changes")
@@ -373,9 +340,7 @@ export async function readHub(db: Db, userId: string): Promise<ProgrammeHub> {
 
   const acks = (ackRes.data ?? []) as Row[];
   const myAcks = new Set(
-    acks
-      .filter((a) => String(a["user_id"]) === userId)
-      .map((a) => `${a["subject_type"]}:${a["subject_id"]}`),
+    acks.filter((a) => String(a["user_id"]) === userId).map((a) => `${a["subject_type"]}:${a["subject_id"]}`),
   );
   const ackCounts = new Map<string, number>();
   for (const a of acks) {
@@ -495,8 +460,7 @@ export async function readHub(db: Db, userId: string): Promise<ProgrammeHub> {
 
   const votes: ProgrammeVote[] = ((voteRes.data ?? []) as Row[]).map((v) => {
     const id = String(v["id"]);
-    const showResults =
-      Boolean(v["results_visible"]) || isStaff || String(v["status"]) === "closed";
+    const showResults = Boolean(v["results_visible"]) || isStaff || String(v["status"]) === "closed";
     return {
       id,
       eventId: s(v, "event_id"),
@@ -528,9 +492,7 @@ export async function readHub(db: Db, userId: string): Promise<ProgrammeHub> {
 
   const progressRows = (progressRes.data ?? []) as Row[];
   const myDone = new Set(
-    progressRows
-      .filter((p) => String(p["user_id"]) === userId && p["done"])
-      .map((p) => String(p["item_id"])),
+    progressRows.filter((p) => String(p["user_id"]) === userId && p["done"]).map((p) => String(p["item_id"])),
   );
   const doneCounts = new Map<string, number>();
   for (const p of progressRows) {
@@ -648,41 +610,25 @@ export async function readHub(db: Db, userId: string): Promise<ProgrammeHub> {
 export async function setRsvp(db: Db, userId: string, eventId: string, response: string) {
   const { error } = await db
     .from("programme_event_rsvps")
-    .upsert({ event_id: eventId, user_id: userId, response } as never, {
-      onConflict: "event_id,user_id",
-    });
+    .upsert({ event_id: eventId, user_id: userId, response } as never, { onConflict: "event_id,user_id" });
   if (error) throw new Error(error.message || "We couldn't save your RSVP");
   return readHub(db, userId);
 }
 
-export async function acknowledge(
-  db: Db,
-  userId: string,
-  subjectType: "event" | "announcement",
-  subjectId: string,
-) {
+export async function acknowledge(db: Db, userId: string, subjectType: "event" | "announcement", subjectId: string) {
   const cohortId = await subjectCohort(db, subjectType, subjectId);
   if (!cohortId) throw new Error("That item is no longer available");
   const { error } = await db
     .from("programme_acknowledgements")
     .upsert(
-      {
-        cohort_id: cohortId,
-        subject_type: subjectType,
-        subject_id: subjectId,
-        user_id: userId,
-      } as never,
+      { cohort_id: cohortId, subject_type: subjectType, subject_id: subjectId, user_id: userId } as never,
       { onConflict: "subject_type,subject_id,user_id", ignoreDuplicates: true },
     );
   if (error) throw new Error(error.message || "We couldn't record that");
   return readHub(db, userId);
 }
 
-async function subjectCohort(
-  db: Db,
-  subjectType: string,
-  subjectId: string,
-): Promise<string | null> {
+async function subjectCohort(db: Db, subjectType: string, subjectId: string): Promise<string | null> {
   const table = subjectType === "event" ? "programme_events" : "programme_announcements";
   const { data } = await db.from(table).select("cohort_id").eq("id", subjectId).maybeSingle();
   return data ? String((data as Row)["cohort_id"]) : null;
@@ -691,26 +637,17 @@ async function subjectCohort(
 export async function castVote(db: Db, userId: string, voteId: string, optionId: string) {
   const { error } = await db
     .from("programme_vote_responses")
-    .upsert({ vote_id: voteId, option_id: optionId, user_id: userId } as never, {
-      onConflict: "vote_id,user_id",
-    });
+    .upsert({ vote_id: voteId, option_id: optionId, user_id: userId } as never, { onConflict: "vote_id,user_id" });
   if (error) throw new Error(error.message || "We couldn't record your vote");
   return readHub(db, userId);
 }
 
 export async function setChecklistItemDone(db: Db, userId: string, itemId: string, done: boolean) {
   if (done) {
-    const { error } = await db
-      .from("programme_checklist_progress")
-      .upsert(
-        {
-          user_id: userId,
-          item_id: itemId,
-          done: true,
-          done_at: new Date().toISOString(),
-        } as never,
-        { onConflict: "user_id,item_id" },
-      );
+    const { error } = await db.from("programme_checklist_progress").upsert(
+      { user_id: userId, item_id: itemId, done: true, done_at: new Date().toISOString() } as never,
+      { onConflict: "user_id,item_id" },
+    );
     if (error) throw error;
   } else {
     const { error } = await db
@@ -781,16 +718,9 @@ export async function previewJoinCode(code: string): Promise<JoinPreview | null>
   };
 }
 
-export async function joinWithCode(
-  userDb: Db,
-  userId: string,
-  code: string,
-): Promise<ProgrammeHub> {
+export async function joinWithCode(userDb: Db, userId: string, code: string): Promise<ProgrammeHub> {
   const db = await adminDb();
-  const { error } = await db.rpc(
-    "programme_join" as never,
-    { _user_id: userId, _code: code } as never,
-  );
+  const { error } = await db.rpc("programme_join" as never, { _user_id: userId, _code: code } as never);
   if (error) throw new Error(error.message || "That programme code was not recognised");
   return readHub(userDb, userId);
 }
@@ -818,11 +748,7 @@ export type InvitePreview = {
 
 export async function previewInvite(code: string): Promise<InvitePreview | null> {
   const db = await adminDb();
-  const { data } = await db
-    .from("programme_invites")
-    .select("*")
-    .eq("code", code.trim())
-    .maybeSingle();
+  const { data } = await db.from("programme_invites").select("*").eq("code", code.trim()).maybeSingle();
   if (!data) return null;
   const invite = data as Row;
   const { data: prog } = await db
@@ -852,17 +778,9 @@ export async function previewInvite(code: string): Promise<InvitePreview | null>
 }
 
 /** A director claims their programme (or a staff invite is accepted). */
-export async function acceptInvite(
-  userDb: Db,
-  userId: string,
-  code: string,
-): Promise<ProgrammeHub> {
+export async function acceptInvite(userDb: Db, userId: string, code: string): Promise<ProgrammeHub> {
   const db = await adminDb();
-  const { data } = await db
-    .from("programme_invites")
-    .select("*")
-    .eq("code", code.trim())
-    .maybeSingle();
+  const { data } = await db.from("programme_invites").select("*").eq("code", code.trim()).maybeSingle();
   if (!data) throw new Error("That invite was not recognised");
   const invite = data as Row;
   if (invite["accepted_at"]) throw new Error("That invite has already been used");
@@ -1029,11 +947,7 @@ const FIELD_LABEL: Record<string, string> = {
 export type EventUpdate = Partial<EventInput> & { notifyLevel?: NotifyLevel; note?: string | null };
 
 export async function updateEvent(db: Db, userId: string, eventId: string, patch: EventUpdate) {
-  const { data: existing } = await db
-    .from("programme_events")
-    .select("*")
-    .eq("id", eventId)
-    .maybeSingle();
+  const { data: existing } = await db.from("programme_events").select("*").eq("id", eventId).maybeSingle();
   if (!existing) throw new Error("That event no longer exists");
   const before = existing as Row;
   const cohortId = String(before["cohort_id"]);
@@ -1068,28 +982,17 @@ export async function updateEvent(db: Db, userId: string, eventId: string, patch
     update[column] = value;
     const prev = before[column] ?? null;
     if (String(prev ?? "") !== String(value ?? "")) {
-      diffs.push({
-        field: column,
-        before: prev == null ? null : String(prev),
-        after: value == null ? null : String(value),
-      });
+      diffs.push({ field: column, before: prev == null ? null : String(prev), after: value == null ? null : String(value) });
     }
   }
   if (patch.audience) {
     update["audience_kind"] = patch.audience.kind;
     if (String(before["audience_kind"]) !== patch.audience.kind) {
-      diffs.push({
-        field: "audience_kind",
-        before: String(before["audience_kind"]),
-        after: patch.audience.kind,
-      });
+      diffs.push({ field: "audience_kind", before: String(before["audience_kind"]), after: patch.audience.kind });
     }
   }
 
-  const { error } = await db
-    .from("programme_events")
-    .update(update as never)
-    .eq("id", eventId);
+  const { error } = await db.from("programme_events").update(update as never).eq("id", eventId);
   if (error) throw new Error(error.message || "We couldn't update that event");
 
   if (patch.audience) await writeAudience(db, cohortId, "event", eventId, patch.audience);
@@ -1127,11 +1030,7 @@ export async function updateEvent(db: Db, userId: string, eventId: string, patch
 }
 
 export async function deleteEvent(db: Db, userId: string, eventId: string) {
-  const { data: existing } = await db
-    .from("programme_events")
-    .select("cohort_id")
-    .eq("id", eventId)
-    .maybeSingle();
+  const { data: existing } = await db.from("programme_events").select("cohort_id").eq("id", eventId).maybeSingle();
   if (!existing) return readHub(db, userId);
   await requireStaff(db, userId, String((existing as Row)["cohort_id"]), "events");
   const { error } = await db.from("programme_events").delete().eq("id", eventId);
@@ -1153,12 +1052,7 @@ export type AnnouncementInput = {
   notify?: boolean;
 };
 
-export async function createAnnouncement(
-  db: Db,
-  userId: string,
-  cohortId: string,
-  input: AnnouncementInput,
-) {
+export async function createAnnouncement(db: Db, userId: string, cohortId: string, input: AnnouncementInput) {
   await requireStaff(db, userId, cohortId, "announcements");
   const audience = input.audience ?? everyone;
   const { data, error } = await db
@@ -1196,11 +1090,7 @@ export async function createAnnouncement(
 }
 
 export async function deleteAnnouncement(db: Db, userId: string, id: string) {
-  const { data } = await db
-    .from("programme_announcements")
-    .select("cohort_id")
-    .eq("id", id)
-    .maybeSingle();
+  const { data } = await db.from("programme_announcements").select("cohort_id").eq("id", id).maybeSingle();
   if (!data) return readHub(db, userId);
   await requireStaff(db, userId, String((data as Row)["cohort_id"]), "announcements");
   const { error } = await db.from("programme_announcements").delete().eq("id", id);
@@ -1261,33 +1151,14 @@ export async function createVote(db: Db, userId: string, cohortId: string, input
   await writeAudience(db, cohortId, "vote", voteId, audience);
   if (input.notify !== false) {
     const heading =
-      input.voteKind === "question" || input.voteKind === "yes_no"
-        ? "A question for you"
-        : "New vote";
-    await notifyAudience(
-      cohortId,
-      audience.kind,
-      "vote",
-      voteId,
-      "notify",
-      heading,
-      input.question,
-    );
+      input.voteKind === "question" || input.voteKind === "yes_no" ? "A question for you" : "New vote";
+    await notifyAudience(cohortId, audience.kind, "vote", voteId, "notify", heading, input.question);
   }
   return readHub(db, userId);
 }
 
-export async function closeVote(
-  db: Db,
-  userId: string,
-  voteId: string,
-  winningOptionId: string | null,
-) {
-  const { data } = await db
-    .from("programme_votes")
-    .select("cohort_id")
-    .eq("id", voteId)
-    .maybeSingle();
+export async function closeVote(db: Db, userId: string, voteId: string, winningOptionId: string | null) {
+  const { data } = await db.from("programme_votes").select("cohort_id").eq("id", voteId).maybeSingle();
   if (!data) throw new Error("That vote no longer exists");
   await requireStaff(db, userId, String((data as Row)["cohort_id"]), "votes");
   const { error } = await db
@@ -1303,26 +1174,13 @@ export async function closeVote(
 }
 
 /** Turn the winning option into the event's confirmed plan. */
-export async function applyVoteWinnerToEvent(
-  db: Db,
-  userId: string,
-  voteId: string,
-  optionId: string,
-) {
-  const { data: vote } = await db
-    .from("programme_votes")
-    .select("*")
-    .eq("id", voteId)
-    .maybeSingle();
+export async function applyVoteWinnerToEvent(db: Db, userId: string, voteId: string, optionId: string) {
+  const { data: vote } = await db.from("programme_votes").select("*").eq("id", voteId).maybeSingle();
   if (!vote) throw new Error("That vote no longer exists");
   const v = vote as Row;
   const cohortId = String(v["cohort_id"]);
   await requireStaff(db, userId, cohortId, "votes");
-  const { data: option } = await db
-    .from("programme_vote_options")
-    .select("*")
-    .eq("id", optionId)
-    .maybeSingle();
+  const { data: option } = await db.from("programme_vote_options").select("*").eq("id", optionId).maybeSingle();
   if (!option) throw new Error("That option no longer exists");
   const label = String((option as Row)["label"]);
 
@@ -1341,13 +1199,7 @@ export async function applyVoteWinnerToEvent(
 
 /* ──────────────────── Staff: groups, participants, content ───────────────── */
 
-export async function createGroup(
-  db: Db,
-  userId: string,
-  cohortId: string,
-  name: string,
-  description: string | null,
-) {
+export async function createGroup(db: Db, userId: string, cohortId: string, name: string, description: string | null) {
   await requireStaff(db, userId, cohortId, "groups");
   const { error } = await db
     .from("programme_groups")
@@ -1357,11 +1209,7 @@ export async function createGroup(
 }
 
 export async function deleteGroup(db: Db, userId: string, groupId: string) {
-  const { data } = await db
-    .from("programme_groups")
-    .select("cohort_id")
-    .eq("id", groupId)
-    .maybeSingle();
+  const { data } = await db.from("programme_groups").select("cohort_id").eq("id", groupId).maybeSingle();
   if (!data) return readHub(db, userId);
   await requireStaff(db, userId, String((data as Row)["cohort_id"]), "groups");
   const { error } = await db.from("programme_groups").delete().eq("id", groupId);
@@ -1369,26 +1217,14 @@ export async function deleteGroup(db: Db, userId: string, groupId: string) {
   return readHub(db, userId);
 }
 
-export async function setGroupMembership(
-  db: Db,
-  userId: string,
-  groupId: string,
-  memberId: string,
-  member: boolean,
-) {
-  const { data } = await db
-    .from("programme_groups")
-    .select("cohort_id")
-    .eq("id", groupId)
-    .maybeSingle();
+export async function setGroupMembership(db: Db, userId: string, groupId: string, memberId: string, member: boolean) {
+  const { data } = await db.from("programme_groups").select("cohort_id").eq("id", groupId).maybeSingle();
   if (!data) throw new Error("That group no longer exists");
   await requireStaff(db, userId, String((data as Row)["cohort_id"]), "groups");
   if (member) {
     const { error } = await db
       .from("programme_group_members")
-      .upsert({ group_id: groupId, user_id: memberId } as never, {
-        onConflict: "group_id,user_id",
-      });
+      .upsert({ group_id: groupId, user_id: memberId } as never, { onConflict: "group_id,user_id" });
     if (error) throw error;
   } else {
     const { error } = await db
@@ -1411,11 +1247,7 @@ export type Participant = {
 };
 
 /** The roster, with just enough to run a programme — no sensitive personal data. */
-export async function listParticipants(
-  db: Db,
-  userId: string,
-  cohortId: string,
-): Promise<Participant[]> {
+export async function listParticipants(db: Db, userId: string, cohortId: string): Promise<Participant[]> {
   await requireStaff(db, userId, cohortId, "participants");
   return rosterForCohort(cohortId);
 }
@@ -1435,29 +1267,18 @@ export async function rosterForCohort(cohortId: string): Promise<Participant[]> 
   if (!rows.length) return [];
   const ids = rows.map((r) => String(r["user_id"]));
 
-  const [
-    { data: handles },
-    { data: travel },
-    { data: groups },
-    { data: items },
-    { data: progress },
-  ] = await Promise.all([
-    service.from("member_handles").select("user_id, handle, display_name").in("user_id", ids),
-    service.from("member_travel").select("user_id, display_name").in("user_id", ids),
-    service.from("programme_groups").select("id").eq("cohort_id", cohortId),
-    service.from("programme_checklist_items").select("id").eq("cohort_id", cohortId),
-    service
-      .from("programme_checklist_progress")
-      .select("user_id, item_id, done")
-      .in("user_id", ids),
-  ]);
+  const [{ data: handles }, { data: travel }, { data: groups }, { data: items }, { data: progress }] =
+    await Promise.all([
+      service.from("member_handles").select("user_id, handle, display_name").in("user_id", ids),
+      service.from("member_travel").select("user_id, display_name").in("user_id", ids),
+      service.from("programme_groups").select("id").eq("cohort_id", cohortId),
+      service.from("programme_checklist_items").select("id").eq("cohort_id", cohortId),
+      service.from("programme_checklist_progress").select("user_id, item_id, done").in("user_id", ids),
+    ]);
 
   const groupIds = ((groups ?? []) as Row[]).map((g) => String(g["id"]));
   const { data: gm } = groupIds.length
-    ? await service
-        .from("programme_group_members")
-        .select("group_id, user_id")
-        .in("group_id", groupIds)
+    ? await service.from("programme_group_members").select("group_id, user_id").in("group_id", groupIds)
     : { data: [] as Row[] };
 
   const itemIds = new Set(((items ?? []) as Row[]).map((i) => String(i["id"])));
@@ -1480,9 +1301,7 @@ export async function rosterForCohort(cohortId: string): Promise<Participant[]> 
     const h = handleBy.get(uid);
     const t = travelBy.get(uid);
     const name =
-      (t && s(t, "display_name")) ||
-      (h && s(h, "display_name")) ||
-      (h ? `@${h["handle"]}` : "Participant");
+      (t && s(t, "display_name")) || (h && s(h, "display_name")) || (h ? `@${h["handle"]}` : "Participant");
     return {
       userId: uid,
       name: name ?? "Participant",
@@ -1502,13 +1321,12 @@ export type SimpleContentInput = {
   values: Row;
 };
 
-const CONTENT_TABLE: Record<SimpleContentInput["kind"], { table: string; perm: StaffPermission }> =
-  {
-    checklist_item: { table: "programme_checklist_items", perm: "checklists" },
-    document: { table: "programme_documents", perm: "documents" },
-    contact: { table: "programme_contacts", perm: "contacts" },
-    place: { table: "programme_places", perm: "places" },
-  };
+const CONTENT_TABLE: Record<SimpleContentInput["kind"], { table: string; perm: StaffPermission }> = {
+  checklist_item: { table: "programme_checklist_items", perm: "checklists" },
+  document: { table: "programme_documents", perm: "documents" },
+  contact: { table: "programme_contacts", perm: "contacts" },
+  place: { table: "programme_places", perm: "places" },
+};
 
 export async function upsertContent(db: Db, userId: string, input: SimpleContentInput) {
   const spec = CONTENT_TABLE[input.kind];
@@ -1518,17 +1336,10 @@ export async function upsertContent(db: Db, userId: string, input: SimpleContent
 
   let id = input.id ?? null;
   if (id) {
-    const { error } = await db
-      .from(spec.table)
-      .update(values as never)
-      .eq("id", id);
+    const { error } = await db.from(spec.table).update(values as never).eq("id", id);
     if (error) throw new Error(error.message || "We couldn't save that");
   } else {
-    const { data, error } = await db
-      .from(spec.table)
-      .insert(values as never)
-      .select("id")
-      .single();
+    const { data, error } = await db.from(spec.table).insert(values as never).select("id").single();
     if (error) throw new Error(error.message || "We couldn't save that");
     id = String((data as Row)["id"]);
   }
@@ -1554,10 +1365,7 @@ export async function deleteContent(
 /** Drop the editable "Before you fly" defaults into an empty cohort. */
 export async function seedDefaultChecklist(db: Db, userId: string, cohortId: string) {
   await requireStaff(db, userId, cohortId, "checklists");
-  const { data: existing } = await db
-    .from("programme_checklist_items")
-    .select("item_key")
-    .eq("cohort_id", cohortId);
+  const { data: existing } = await db.from("programme_checklist_items").select("item_key").eq("cohort_id", cohortId);
   const have = new Set(((existing ?? []) as Row[]).map((r) => String(r["item_key"])));
   const rows = DEFAULT_CHECKLIST.filter((d) => !have.has(d.itemKey)).map((d, i) => ({
     cohort_id: cohortId,
@@ -1619,41 +1427,25 @@ export type AdminProgrammeRow = {
     events: number;
   }[];
   staff: { userId: string; role: string; email: string | null }[];
-  invites: {
-    id: string;
-    code: string;
-    kind: string;
-    role: string;
-    accepted: boolean;
-    expiresAt: string | null;
-  }[];
+  invites: { id: string; code: string; kind: string; role: string; accepted: boolean; expiresAt: string | null }[];
 };
 
 export async function adminListProgrammes(): Promise<AdminProgrammeRow[]> {
   const db = await adminDb();
-  const [
-    { data: programmes },
-    { data: cohorts },
-    { data: memberships },
-    { data: events },
-    { data: staff },
-    { data: invites },
-  ] = await Promise.all([
-    db.from("programmes").select("*").order("created_at", { ascending: false }),
-    db.from("programme_cohorts").select("*"),
-    db.from("programme_memberships").select("cohort_id, status"),
-    db.from("programme_events").select("cohort_id"),
-    db.from("programme_staff").select("*"),
-    db.from("programme_invites").select("*").order("created_at", { ascending: false }),
-  ]);
+  const [{ data: programmes }, { data: cohorts }, { data: memberships }, { data: events }, { data: staff }, { data: invites }] =
+    await Promise.all([
+      db.from("programmes").select("*").order("created_at", { ascending: false }),
+      db.from("programme_cohorts").select("*"),
+      db.from("programme_memberships").select("cohort_id, status"),
+      db.from("programme_events").select("cohort_id"),
+      db.from("programme_staff").select("*"),
+      db.from("programme_invites").select("*").order("created_at", { ascending: false }),
+    ]);
 
   const staffIds = [...new Set(((staff ?? []) as Row[]).map((s2) => String(s2["user_id"])))];
   const emails = new Map<string, string>();
   if (staffIds.length) {
-    const { data: profiles } = await db
-      .from("member_profiles")
-      .select("user_id, email")
-      .in("user_id", staffIds);
+    const { data: profiles } = await db.from("member_profiles").select("user_id, email").in("user_id", staffIds);
     for (const p of (profiles ?? []) as Row[]) {
       if (p["email"]) emails.set(String(p["user_id"]), String(p["email"]));
     }
@@ -1775,11 +1567,7 @@ export async function adminCreateCohort(input: {
   return { id: String((data as Row)["id"]), joinCode: code };
 }
 
-export async function adminAssignOwnerByEmail(
-  programmeId: string,
-  email: string,
-  role: StaffRole = "owner",
-) {
+export async function adminAssignOwnerByEmail(programmeId: string, email: string, role: StaffRole = "owner") {
   const db = await adminDb();
   const { data } = await db
     .from("member_profiles")
@@ -1838,10 +1626,7 @@ export async function adminSetProgrammeFlags(input: {
     patch["verified_by"] = input.verified ? input.adminUserId : null;
   }
   if (input.active !== undefined) patch["status"] = input.active ? "active" : "inactive";
-  const { error } = await db
-    .from("programmes")
-    .update(patch as never)
-    .eq("id", input.programmeId);
+  const { error } = await db.from("programmes").update(patch as never).eq("id", input.programmeId);
   if (error) throw new Error(error.message || "We couldn't update that programme");
   return { ok: true };
 }
@@ -1871,10 +1656,7 @@ export async function adminUpdateProgramme(input: {
   if (input.programmeType !== undefined) patch["programme_type"] = input.programmeType;
   if (input.slug !== undefined) patch["slug"] = input.slug;
   if (input.status !== undefined) patch["status"] = input.status;
-  const { error } = await db
-    .from("programmes")
-    .update(patch as never)
-    .eq("id", input.programmeId);
+  const { error } = await db.from("programmes").update(patch as never).eq("id", input.programmeId);
   if (error) throw new Error(error.message || "We couldn't update that programme");
   return { ok: true };
 }
@@ -1911,10 +1693,7 @@ export async function adminUpdateCohort(input: {
     if (clash) throw new Error("That join code is already in use");
   }
 
-  const { error } = await db
-    .from("programme_cohorts")
-    .update(patch as never)
-    .eq("id", input.cohortId);
+  const { error } = await db.from("programme_cohorts").update(patch as never).eq("id", input.cohortId);
   if (error) throw new Error(error.message || "We couldn't update that cohort");
   return { ok: true, joinCode: (patch["join_code"] as string | undefined) ?? null };
 }
@@ -1943,11 +1722,7 @@ export async function adminSetStaffRole(programmeId: string, userId: string, rol
 
 export async function adminRevokeInvite(inviteId: string) {
   const db = await adminDb();
-  const { error } = await db
-    .from("programme_invites")
-    .delete()
-    .eq("id", inviteId)
-    .is("accepted_at", null);
+  const { error } = await db.from("programme_invites").delete().eq("id", inviteId).is("accepted_at", null);
   if (error) throw new Error(error.message || "We couldn't revoke that invite");
   return { ok: true };
 }
@@ -1981,11 +1756,7 @@ export type AdminCohortDetail = {
 /** Everything the internal console shows for one cohort. Admin-role only. */
 export async function adminCohortDetail(cohortId: string): Promise<AdminCohortDetail> {
   const db = await adminDb();
-  const { data: cohortRow } = await db
-    .from("programme_cohorts")
-    .select("*")
-    .eq("id", cohortId)
-    .maybeSingle();
+  const { data: cohortRow } = await db.from("programme_cohorts").select("*").eq("id", cohortId).maybeSingle();
   if (!cohortRow) throw new Error("That cohort no longer exists");
   const cohort = cohortRow as Row;
 
