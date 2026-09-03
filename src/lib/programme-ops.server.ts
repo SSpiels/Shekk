@@ -13,6 +13,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   DEFAULT_CHECKLIST,
   emptyHub,
+  emptyStaffSession,
   everyone,
   type Audience,
   type AudienceKind,
@@ -29,9 +30,12 @@ import {
   type ProgrammeNotification,
   type ProgrammePlace,
   type ProgrammeVote,
+  pickActiveProgrammeId,
   type StaffContext,
   type StaffPermission,
   type StaffRole,
+  type StaffSession,
+  type StaffWorkspace,
 } from "./programme/logic";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -133,6 +137,71 @@ export async function staffContext(db: Db, userId: string, cohortId: string | nu
     role: String(row["role"]) as StaffRole,
     permissions: ((row["permissions"] ?? []) as string[]).map(String) as StaffPermission[],
   };
+}
+
+/**
+ * Every programme a signed-in user has staff access to, plus which one is
+ * active. Entirely self-scoped to the caller: programme_staff, programmes
+ * and programme_cohorts all carry RLS policies keyed off auth.uid() ("Staff
+ * read their programme staff list" / "Staff read their programmes" / "Staff
+ * read their cohorts"), so this runs on the caller's own session client —
+ * never the service role — and there is no client-supplied id to validate,
+ * because none is accepted. Used to gate /staff; not the full programme hub.
+ */
+export async function resolveStaffSession(db: Db, userId: string): Promise<StaffSession> {
+  const { data: staffRows, error } = await db
+    .from("programme_staff")
+    .select("programme_id, role, permissions, created_at")
+    .eq("user_id", userId);
+  if (error) throw error;
+  const rows = (staffRows ?? []) as Row[];
+  if (!rows.length) return emptyStaffSession;
+
+  const programmeIds = [...new Set(rows.map((r) => String(r["programme_id"])))];
+  const [{ data: programmes }, { data: cohorts }] = await Promise.all([
+    db.from("programmes").select("id, name, organisation").in("id", programmeIds),
+    db
+      .from("programme_cohorts")
+      .select("id, programme_id, name, year, created_at")
+      .in("programme_id", programmeIds),
+  ]);
+
+  const programmeById = new Map(((programmes ?? []) as Row[]).map((p) => [String(p["id"]), p]));
+
+  // Current cohort per programme = most recently created, same rule readHub() uses.
+  const latestCohortByProgramme = new Map<string, Row>();
+  for (const c of (cohorts ?? []) as Row[]) {
+    const pid = String(c["programme_id"]);
+    const existing = latestCohortByProgramme.get(pid);
+    if (!existing || String(c["created_at"]) > String(existing["created_at"])) {
+      latestCohortByProgramme.set(pid, c);
+    }
+  }
+
+  const workspaces: StaffWorkspace[] = rows.flatMap((r): StaffWorkspace[] => {
+    const programmeId = String(r["programme_id"]);
+    const programme = programmeById.get(programmeId);
+    // A staff row for a programme we couldn't read back (RLS or a dangling
+    // row) is dropped rather than guessed at — never surface a workspace we
+    // can't name.
+    if (!programme) return [];
+    const cohort = latestCohortByProgramme.get(programmeId) ?? null;
+    return [
+      {
+        programmeId,
+        programmeName: String(programme["name"]),
+        organisation: (programme["organisation"] as string | null) ?? null,
+        role: String(r["role"]) as StaffRole,
+        permissions: ((r["permissions"] ?? []) as string[]).map(String) as StaffPermission[],
+        cohort: cohort
+          ? { id: String(cohort["id"]), name: String(cohort["name"]), year: (cohort["year"] as string | null) ?? null }
+          : null,
+        createdAt: String(r["created_at"]),
+      },
+    ];
+  });
+
+  return { workspaces, activeProgrammeId: pickActiveProgrammeId(workspaces) };
 }
 
 /** Throws unless the caller really is staff on this cohort with this permission. */

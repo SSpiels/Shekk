@@ -34,6 +34,61 @@ export type StaffContext = {
   permissions: StaffPermission[];
 };
 
+/**
+ * Two different "status" fields live in the programme domain — do not fold
+ * them into one, and do not let either drift to mean the other:
+ *
+ *  - `programme_memberships.status` ('active' | 'left') is membership-record
+ *    bookkeeping: is this the row that currently makes someone in_cohort()?
+ *    It backs a partial unique index (one active row per user) and the
+ *    in_cohort()/my_cohort_id() RLS helpers everything else depends on.
+ *
+ *  - `programme_student_details.status` ('applicant' | 'pre_arrival' |
+ *    'active' | 'temporarily_away' | 'completed' | 'withdrawn') is the
+ *    operational lifecycle stage Programme OS staff assign and filter by.
+ *    It has no bearing on cohort access.
+ *
+ * A student can be membership-status 'active' (they're in the cohort) while
+ * lifecycle-status 'pre_arrival' (they haven't landed yet) — that's the
+ * normal case, not a contradiction.
+ */
+
+/** One programme a signed-in user has staff access to, and its current cohort. */
+export type StaffWorkspace = {
+  programmeId: string;
+  programmeName: string;
+  organisation: string | null;
+  role: StaffRole;
+  permissions: StaffPermission[];
+  cohort: { id: string; name: string; year: string | null } | null;
+  /** When this staff grant was created — the raw signal `pickActiveProgrammeId` sorts on. */
+  createdAt: string;
+};
+
+export type StaffSession = {
+  workspaces: StaffWorkspace[];
+  /** Which workspace is "current" right now — never assume there's exactly one. */
+  activeProgrammeId: string | null;
+};
+
+export const emptyStaffSession: StaffSession = { workspaces: [], activeProgrammeId: null };
+
+/**
+ * Which workspace a staff member lands in when they haven't chosen one.
+ *
+ * DELIBERATE PLACEHOLDER, not permanent product behaviour. Multi-workspace
+ * staff are a real, schema-supported case (programme_staff has no
+ * uniqueness constraint on user_id) that V1 doesn't yet expose a switcher
+ * for, so this picks the most recently granted staff row — deterministic,
+ * but arbitrary from the user's point of view. When a switcher or a stored
+ * "last active" preference exists, replace this function's body; don't just
+ * delete it and let a single workspace be assumed again.
+ */
+export function pickActiveProgrammeId(workspaces: StaffWorkspace[]): string | null {
+  if (!workspaces.length) return null;
+  return [...workspaces].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0].programmeId;
+}
+
 export type AudienceKind = "everyone" | "groups" | "individuals";
 
 export type EventStatus =

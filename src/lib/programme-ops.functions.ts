@@ -201,6 +201,16 @@ export const programmeHub = createServerFn({ method: "POST" })
     return readHub(context.supabase, context.userId);
   });
 
+/* ─────────────────────────────── Staff session ─────────────────────────────── */
+
+/** Which programme(s) the signed-in user has staff access to. Gates /staff. */
+export const staffSession = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { resolveStaffSession } = await import("@/lib/programme-ops.server");
+    return resolveStaffSession(context.supabase, context.userId);
+  });
+
 /* ──────────────────────────── Participant mutations ───────────────────────── */
 
 export const programmeSetRsvp = createServerFn({ method: "POST" })

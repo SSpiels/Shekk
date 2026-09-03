@@ -13,6 +13,7 @@ import {
   nowEvent,
   openVotes,
   pendingAcknowledgements,
+  pickActiveProgrammeId,
   placeDirectionsUrl,
   staffCan,
   statusTone,
@@ -25,6 +26,7 @@ import {
   type ProgrammeHub,
   type ProgrammeVote,
   type StaffContext,
+  type StaffWorkspace,
 } from "./logic";
 
 /* ───────────────────────────────── fixtures ──────────────────────────────── */
@@ -403,5 +405,33 @@ describe("placeDirectionsUrl", () => {
 
   it("returns null when there is nothing to navigate to", () => {
     expect(placeDirectionsUrl({})).toBeNull();
+  });
+});
+
+describe("pickActiveProgrammeId", () => {
+  const workspace = (over: Partial<StaffWorkspace>): StaffWorkspace => ({
+    programmeId: "p1",
+    programmeName: "Programme",
+    organisation: null,
+    role: "staff",
+    permissions: [],
+    cohort: null,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    ...over,
+  });
+
+  it("returns null for no workspaces", () => {
+    expect(pickActiveProgrammeId([])).toBeNull();
+  });
+
+  it("is the only workspace when there is exactly one", () => {
+    expect(pickActiveProgrammeId([workspace({ programmeId: "solo" })])).toBe("solo");
+  });
+
+  it("picks the most recently granted staff row, regardless of input order", () => {
+    const older = workspace({ programmeId: "older", createdAt: "2025-01-01T00:00:00.000Z" });
+    const newer = workspace({ programmeId: "newer", createdAt: "2026-06-01T00:00:00.000Z" });
+    expect(pickActiveProgrammeId([older, newer])).toBe("newer");
+    expect(pickActiveProgrammeId([newer, older])).toBe("newer");
   });
 });

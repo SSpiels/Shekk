@@ -578,6 +578,9 @@ function Auth() {
           <ShieldCheck className="size-3.5" /> Identity checks are run by our regulated payment
           partner.
         </p>
+        <Link to="/staff" className="text-center text-xs text-muted-foreground underline">
+          Programme staff?
+        </Link>
         <button
           type="button"
           onClick={() => navigate({ to: "/" })}

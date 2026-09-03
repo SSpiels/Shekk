@@ -49,6 +49,7 @@ import {
   staffApplyVoteWinner,
   staffListParticipants,
   staffSeedChecklist,
+  staffSession,
   staffSetGroupMembership,
   staffUpdateEvent,
   staffUpsertContent,
@@ -65,6 +66,7 @@ import type {
 import {
   checklistProgress,
   emptyHub,
+  emptyStaffSession,
   importantChanges,
   nextEvent,
   nowEvent,
@@ -72,6 +74,7 @@ import {
   pendingAcknowledgements,
   todaysEvents,
   type ProgrammeHub,
+  type StaffSession,
 } from "@/lib/programme/logic";
 
 export const HUB_KEY = ["programme", "hub"] as const;
@@ -128,6 +131,34 @@ export function useProgrammeHub() {
     error: query.error,
     refetch: query.refetch,
     adopt: (next: ProgrammeHub) => qc.setQueryData(HUB_KEY, next),
+  };
+}
+
+/**
+ * Which programme(s), if any, the signed-in user has staff access to — the
+ * gate `/staff` runs before rendering anything else. Deliberately separate
+ * from useProgrammeHub: a pure-staff account (no student membership) still
+ * needs this to resolve, and a participant hub read shouldn't imply a staff
+ * lookup happened.
+ */
+export function useStaffSession() {
+  const { signedIn, authChecked } = useApp();
+  const read = useServerFn(staffSession);
+
+  const query = useQuery<StaffSession>({
+    queryKey: ["staff", "session"],
+    queryFn: () => read(),
+    enabled: signedIn,
+    staleTime: 30_000,
+    retry: false,
+  });
+
+  return {
+    session: query.data ?? emptyStaffSession,
+    isStaff: (query.data?.workspaces.length ?? 0) > 0,
+    // Loading until we actually know — never flash "not staff" while auth is still settling.
+    loading: !authChecked || (signedIn && query.isLoading),
+    error: query.error,
   };
 }
 

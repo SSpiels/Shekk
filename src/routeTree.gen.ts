@@ -28,6 +28,7 @@ import { Route as ReverifyRouteImport } from './routes/reverify'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
+import { Route as StaffRouteRouteImport } from './routes/staff/route'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TicketsRouteImport } from './routes/tickets'
 import { Route as TopupRouteImport } from './routes/topup'
@@ -86,6 +87,7 @@ import { Route as SiddurIndexRouteImport } from './routes/siddur/index'
 import { Route as SiddurIdRouteImport } from './routes/siddur/$id'
 import { Route as SocialIndexRouteImport } from './routes/social/index'
 import { Route as SocialConversationIdRouteImport } from './routes/social/$conversationId'
+import { Route as StaffIndexRouteImport } from './routes/staff/index'
 import { Route as WhatsOnIndexRouteImport } from './routes/whats-on.index'
 import { Route as ApiAuthEmailWebhookRouteImport } from './routes/api/auth/email-webhook'
 import { Route as ExploreEventIdRouteImport } from './routes/explore/event.$id'
@@ -196,6 +198,11 @@ const SetupRoute = SetupRouteImport.update({
 const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
   id: '/sitemap.xml',
   path: '/sitemap.xml',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StaffRouteRoute = StaffRouteRouteImport.update({
+  id: '/staff',
+  path: '/staff',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TermsRoute = TermsRouteImport.update({
@@ -488,6 +495,11 @@ const SocialConversationIdRoute = SocialConversationIdRouteImport.update({
   path: '/social/$conversationId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StaffIndexRoute = StaffIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => StaffRouteRoute,
+} as any)
 const WhatsOnIndexRoute = WhatsOnIndexRouteImport.update({
   id: '/whats-on/',
   path: '/whats-on/',
@@ -574,6 +586,7 @@ const ApiPublicWebhooksAirwallexRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
+  '/staff': typeof StaffRouteRouteWithChildren
   '/activity': typeof ActivityRoute
   '/auth': typeof AuthRoute
   '/card': typeof CardRoute
@@ -649,6 +662,7 @@ export interface FileRoutesByFullPath {
   '/services/': typeof ServicesIndexRoute
   '/siddur/': typeof SiddurIndexRoute
   '/social/': typeof SocialIndexRoute
+  '/staff/': typeof StaffIndexRoute
   '/whats-on/': typeof WhatsOnIndexRoute
   '/api/auth/email-webhook': typeof ApiAuthEmailWebhookRoute
   '/explore/event/$id': typeof ExploreEventIdRoute
@@ -742,6 +756,7 @@ export interface FileRoutesByTo {
   '/services': typeof ServicesIndexRoute
   '/siddur': typeof SiddurIndexRoute
   '/social': typeof SocialIndexRoute
+  '/staff': typeof StaffIndexRoute
   '/whats-on': typeof WhatsOnIndexRoute
   '/api/auth/email-webhook': typeof ApiAuthEmailWebhookRoute
   '/explore/event/$id': typeof ExploreEventIdRoute
@@ -763,6 +778,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/admin': typeof AdminRouteRouteWithChildren
+  '/staff': typeof StaffRouteRouteWithChildren
   '/activity': typeof ActivityRoute
   '/auth': typeof AuthRoute
   '/card': typeof CardRoute
@@ -838,6 +854,7 @@ export interface FileRoutesById {
   '/services/': typeof ServicesIndexRoute
   '/siddur/': typeof SiddurIndexRoute
   '/social/': typeof SocialIndexRoute
+  '/staff/': typeof StaffIndexRoute
   '/whats-on/': typeof WhatsOnIndexRoute
   '/api/auth/email-webhook': typeof ApiAuthEmailWebhookRoute
   '/explore/event/$id': typeof ExploreEventIdRoute
@@ -860,6 +877,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/admin'
+    | '/staff'
     | '/activity'
     | '/auth'
     | '/card'
@@ -935,6 +953,7 @@ export interface FileRouteTypes {
     | '/services/'
     | '/siddur/'
     | '/social/'
+    | '/staff/'
     | '/whats-on/'
     | '/api/auth/email-webhook'
     | '/explore/event/$id'
@@ -1028,6 +1047,7 @@ export interface FileRouteTypes {
     | '/services'
     | '/siddur'
     | '/social'
+    | '/staff'
     | '/whats-on'
     | '/api/auth/email-webhook'
     | '/explore/event/$id'
@@ -1048,6 +1068,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/admin'
+    | '/staff'
     | '/activity'
     | '/auth'
     | '/card'
@@ -1123,6 +1144,7 @@ export interface FileRouteTypes {
     | '/services/'
     | '/siddur/'
     | '/social/'
+    | '/staff/'
     | '/whats-on/'
     | '/api/auth/email-webhook'
     | '/explore/event/$id'
@@ -1144,6 +1166,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
+  StaffRouteRoute: typeof StaffRouteRouteWithChildren
   ActivityRoute: typeof ActivityRoute
   AuthRoute: typeof AuthRoute
   CardRoute: typeof CardRoute
@@ -1354,6 +1377,13 @@ declare module '@tanstack/react-router' {
       path: '/sitemap.xml'
       fullPath: '/sitemap.xml'
       preLoaderRoute: typeof SitemapDotxmlRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/staff': {
+      id: '/staff'
+      path: '/staff'
+      fullPath: '/staff'
+      preLoaderRoute: typeof StaffRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/terms': {
@@ -1762,6 +1792,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SocialConversationIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/staff/': {
+      id: '/staff/'
+      path: '/'
+      fullPath: '/staff/'
+      preLoaderRoute: typeof StaffIndexRouteImport
+      parentRoute: typeof StaffRouteRoute
+    }
     '/whats-on/': {
       id: '/whats-on/'
       path: '/whats-on'
@@ -1909,6 +1946,18 @@ const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
   AdminRouteRouteChildren,
 )
 
+interface StaffRouteRouteChildren {
+  StaffIndexRoute: typeof StaffIndexRoute
+}
+
+const StaffRouteRouteChildren: StaffRouteRouteChildren = {
+  StaffIndexRoute: StaffIndexRoute,
+}
+
+const StaffRouteRouteWithChildren = StaffRouteRoute._addFileChildren(
+  StaffRouteRouteChildren,
+)
+
 interface ProgrammeRouteChildren {
   ProgrammeInboxRoute: typeof ProgrammeInboxRoute
   ProgrammeInfoRoute: typeof ProgrammeInfoRoute
@@ -1932,6 +1981,7 @@ const ProgrammeRouteWithChildren = ProgrammeRoute._addFileChildren(
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AdminRouteRoute: AdminRouteRouteWithChildren,
+  StaffRouteRoute: StaffRouteRouteWithChildren,
   ActivityRoute: ActivityRoute,
   AuthRoute: AuthRoute,
   CardRoute: CardRoute,
