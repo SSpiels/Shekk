@@ -9,12 +9,15 @@
  * authChecked && signedIn is guaranteed. What's left to decide here is
  * staff-specific: does this account have a programme_staff row at all.
  *
- * Deliberately not the desktop shell yet — that's Phase 3. This only gates
- * and renders whatever the child route is (a placeholder for now).
+ * Also resolves the staff session exactly once here and hands it down via
+ * StaffOSProvider, then wraps every child route in ProgrammeOSShell — no
+ * page under /staff queries its own programme/cohort context.
  */
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { ShieldOff } from "lucide-react";
 import { Splash } from "@/components/Splash";
+import { ProgrammeOSShell } from "@/components/staff/ProgrammeOSShell";
+import { StaffOSProvider } from "@/components/staff/StaffSessionContext";
 import { useStaffSession } from "@/lib/useProgrammeHub";
 
 export const Route = createFileRoute("/staff")({
@@ -54,10 +57,16 @@ function NotStaffScreen() {
 }
 
 function StaffGate() {
-  const { isStaff, loading } = useStaffSession();
+  const { session, isStaff, loading } = useStaffSession();
 
   if (loading) return <Splash message="Checking your programme access…" />;
   if (!isStaff) return <NotStaffScreen />;
 
-  return <Outlet />;
+  return (
+    <StaffOSProvider session={session}>
+      <ProgrammeOSShell>
+        <Outlet />
+      </ProgrammeOSShell>
+    </StaffOSProvider>
+  );
 }

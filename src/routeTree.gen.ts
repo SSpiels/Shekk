@@ -88,6 +88,14 @@ import { Route as SiddurIdRouteImport } from './routes/siddur/$id'
 import { Route as SocialIndexRouteImport } from './routes/social/index'
 import { Route as SocialConversationIdRouteImport } from './routes/social/$conversationId'
 import { Route as StaffIndexRouteImport } from './routes/staff/index'
+import { Route as StaffCalendarRouteImport } from './routes/staff/calendar'
+import { Route as StaffCommunicationsRouteImport } from './routes/staff/communications'
+import { Route as StaffContentRouteImport } from './routes/staff/content'
+import { Route as StaffOnboardingRouteImport } from './routes/staff/onboarding'
+import { Route as StaffOverviewRouteImport } from './routes/staff/overview'
+import { Route as StaffSettingsRouteImport } from './routes/staff/settings'
+import { Route as StaffStudentsRouteImport } from './routes/staff/students'
+import { Route as StaffTeamRouteImport } from './routes/staff/team'
 import { Route as WhatsOnIndexRouteImport } from './routes/whats-on.index'
 import { Route as ApiAuthEmailWebhookRouteImport } from './routes/api/auth/email-webhook'
 import { Route as ExploreEventIdRouteImport } from './routes/explore/event.$id'
@@ -500,6 +508,46 @@ const StaffIndexRoute = StaffIndexRouteImport.update({
   path: '/',
   getParentRoute: () => StaffRouteRoute,
 } as any)
+const StaffCalendarRoute = StaffCalendarRouteImport.update({
+  id: '/calendar',
+  path: '/calendar',
+  getParentRoute: () => StaffRouteRoute,
+} as any)
+const StaffCommunicationsRoute = StaffCommunicationsRouteImport.update({
+  id: '/communications',
+  path: '/communications',
+  getParentRoute: () => StaffRouteRoute,
+} as any)
+const StaffContentRoute = StaffContentRouteImport.update({
+  id: '/content',
+  path: '/content',
+  getParentRoute: () => StaffRouteRoute,
+} as any)
+const StaffOnboardingRoute = StaffOnboardingRouteImport.update({
+  id: '/onboarding',
+  path: '/onboarding',
+  getParentRoute: () => StaffRouteRoute,
+} as any)
+const StaffOverviewRoute = StaffOverviewRouteImport.update({
+  id: '/overview',
+  path: '/overview',
+  getParentRoute: () => StaffRouteRoute,
+} as any)
+const StaffSettingsRoute = StaffSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => StaffRouteRoute,
+} as any)
+const StaffStudentsRoute = StaffStudentsRouteImport.update({
+  id: '/students',
+  path: '/students',
+  getParentRoute: () => StaffRouteRoute,
+} as any)
+const StaffTeamRoute = StaffTeamRouteImport.update({
+  id: '/team',
+  path: '/team',
+  getParentRoute: () => StaffRouteRoute,
+} as any)
 const WhatsOnIndexRoute = WhatsOnIndexRouteImport.update({
   id: '/whats-on/',
   path: '/whats-on/',
@@ -653,6 +701,14 @@ export interface FileRoutesByFullPath {
   '/services/offers': typeof ServicesOffersRoute
   '/siddur/$id': typeof SiddurIdRoute
   '/social/$conversationId': typeof SocialConversationIdRoute
+  '/staff/calendar': typeof StaffCalendarRoute
+  '/staff/communications': typeof StaffCommunicationsRoute
+  '/staff/content': typeof StaffContentRoute
+  '/staff/onboarding': typeof StaffOnboardingRoute
+  '/staff/overview': typeof StaffOverviewRoute
+  '/staff/settings': typeof StaffSettingsRoute
+  '/staff/students': typeof StaffStudentsRoute
+  '/staff/team': typeof StaffTeamRoute
   '/admin/': typeof AdminIndexRoute
   '/before-you-fly/': typeof BeforeYouFlyIndexRoute
   '/benefits/': typeof BenefitsIndexRoute
@@ -747,6 +803,14 @@ export interface FileRoutesByTo {
   '/services/offers': typeof ServicesOffersRoute
   '/siddur/$id': typeof SiddurIdRoute
   '/social/$conversationId': typeof SocialConversationIdRoute
+  '/staff/calendar': typeof StaffCalendarRoute
+  '/staff/communications': typeof StaffCommunicationsRoute
+  '/staff/content': typeof StaffContentRoute
+  '/staff/onboarding': typeof StaffOnboardingRoute
+  '/staff/overview': typeof StaffOverviewRoute
+  '/staff/settings': typeof StaffSettingsRoute
+  '/staff/students': typeof StaffStudentsRoute
+  '/staff/team': typeof StaffTeamRoute
   '/admin': typeof AdminIndexRoute
   '/before-you-fly': typeof BeforeYouFlyIndexRoute
   '/benefits': typeof BenefitsIndexRoute
@@ -845,6 +909,14 @@ export interface FileRoutesById {
   '/services/offers': typeof ServicesOffersRoute
   '/siddur/$id': typeof SiddurIdRoute
   '/social/$conversationId': typeof SocialConversationIdRoute
+  '/staff/calendar': typeof StaffCalendarRoute
+  '/staff/communications': typeof StaffCommunicationsRoute
+  '/staff/content': typeof StaffContentRoute
+  '/staff/onboarding': typeof StaffOnboardingRoute
+  '/staff/overview': typeof StaffOverviewRoute
+  '/staff/settings': typeof StaffSettingsRoute
+  '/staff/students': typeof StaffStudentsRoute
+  '/staff/team': typeof StaffTeamRoute
   '/admin/': typeof AdminIndexRoute
   '/before-you-fly/': typeof BeforeYouFlyIndexRoute
   '/benefits/': typeof BenefitsIndexRoute
@@ -944,6 +1016,14 @@ export interface FileRouteTypes {
     | '/services/offers'
     | '/siddur/$id'
     | '/social/$conversationId'
+    | '/staff/calendar'
+    | '/staff/communications'
+    | '/staff/content'
+    | '/staff/onboarding'
+    | '/staff/overview'
+    | '/staff/settings'
+    | '/staff/students'
+    | '/staff/team'
     | '/admin/'
     | '/before-you-fly/'
     | '/benefits/'
@@ -1038,6 +1118,14 @@ export interface FileRouteTypes {
     | '/services/offers'
     | '/siddur/$id'
     | '/social/$conversationId'
+    | '/staff/calendar'
+    | '/staff/communications'
+    | '/staff/content'
+    | '/staff/onboarding'
+    | '/staff/overview'
+    | '/staff/settings'
+    | '/staff/students'
+    | '/staff/team'
     | '/admin'
     | '/before-you-fly'
     | '/benefits'
@@ -1135,6 +1223,14 @@ export interface FileRouteTypes {
     | '/services/offers'
     | '/siddur/$id'
     | '/social/$conversationId'
+    | '/staff/calendar'
+    | '/staff/communications'
+    | '/staff/content'
+    | '/staff/onboarding'
+    | '/staff/overview'
+    | '/staff/settings'
+    | '/staff/students'
+    | '/staff/team'
     | '/admin/'
     | '/before-you-fly/'
     | '/benefits/'
@@ -1799,6 +1895,62 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StaffIndexRouteImport
       parentRoute: typeof StaffRouteRoute
     }
+    '/staff/calendar': {
+      id: '/staff/calendar'
+      path: '/calendar'
+      fullPath: '/staff/calendar'
+      preLoaderRoute: typeof StaffCalendarRouteImport
+      parentRoute: typeof StaffRouteRoute
+    }
+    '/staff/communications': {
+      id: '/staff/communications'
+      path: '/communications'
+      fullPath: '/staff/communications'
+      preLoaderRoute: typeof StaffCommunicationsRouteImport
+      parentRoute: typeof StaffRouteRoute
+    }
+    '/staff/content': {
+      id: '/staff/content'
+      path: '/content'
+      fullPath: '/staff/content'
+      preLoaderRoute: typeof StaffContentRouteImport
+      parentRoute: typeof StaffRouteRoute
+    }
+    '/staff/onboarding': {
+      id: '/staff/onboarding'
+      path: '/onboarding'
+      fullPath: '/staff/onboarding'
+      preLoaderRoute: typeof StaffOnboardingRouteImport
+      parentRoute: typeof StaffRouteRoute
+    }
+    '/staff/overview': {
+      id: '/staff/overview'
+      path: '/overview'
+      fullPath: '/staff/overview'
+      preLoaderRoute: typeof StaffOverviewRouteImport
+      parentRoute: typeof StaffRouteRoute
+    }
+    '/staff/settings': {
+      id: '/staff/settings'
+      path: '/settings'
+      fullPath: '/staff/settings'
+      preLoaderRoute: typeof StaffSettingsRouteImport
+      parentRoute: typeof StaffRouteRoute
+    }
+    '/staff/students': {
+      id: '/staff/students'
+      path: '/students'
+      fullPath: '/staff/students'
+      preLoaderRoute: typeof StaffStudentsRouteImport
+      parentRoute: typeof StaffRouteRoute
+    }
+    '/staff/team': {
+      id: '/staff/team'
+      path: '/team'
+      fullPath: '/staff/team'
+      preLoaderRoute: typeof StaffTeamRouteImport
+      parentRoute: typeof StaffRouteRoute
+    }
     '/whats-on/': {
       id: '/whats-on/'
       path: '/whats-on'
@@ -1947,10 +2099,26 @@ const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
 )
 
 interface StaffRouteRouteChildren {
+  StaffCalendarRoute: typeof StaffCalendarRoute
+  StaffCommunicationsRoute: typeof StaffCommunicationsRoute
+  StaffContentRoute: typeof StaffContentRoute
+  StaffOnboardingRoute: typeof StaffOnboardingRoute
+  StaffOverviewRoute: typeof StaffOverviewRoute
+  StaffSettingsRoute: typeof StaffSettingsRoute
+  StaffStudentsRoute: typeof StaffStudentsRoute
+  StaffTeamRoute: typeof StaffTeamRoute
   StaffIndexRoute: typeof StaffIndexRoute
 }
 
 const StaffRouteRouteChildren: StaffRouteRouteChildren = {
+  StaffCalendarRoute: StaffCalendarRoute,
+  StaffCommunicationsRoute: StaffCommunicationsRoute,
+  StaffContentRoute: StaffContentRoute,
+  StaffOnboardingRoute: StaffOnboardingRoute,
+  StaffOverviewRoute: StaffOverviewRoute,
+  StaffSettingsRoute: StaffSettingsRoute,
+  StaffStudentsRoute: StaffStudentsRoute,
+  StaffTeamRoute: StaffTeamRoute,
   StaffIndexRoute: StaffIndexRoute,
 }
 
