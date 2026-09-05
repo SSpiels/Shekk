@@ -33,3 +33,6 @@ dist-ssr
 
 # Siddur generator cache
 .siddur-cache/
+
+# Supabase CLI local link/cache state
+supabase/.temp/
