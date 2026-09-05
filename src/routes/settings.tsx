@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   ChevronRight,
   CreditCard,
@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   Globe2,
   FileText,
+  LogOut,
   RotateCcw,
   Moon,
   Sun,
@@ -14,6 +15,7 @@ import {
 } from "lucide-react";
 import { AppShell, Card } from "@/components/AppShell";
 import { LoadingBlocks } from "@/components/Kit";
+import { supabase } from "@/integrations/supabase/client";
 import { CURRENCIES, currency, money, refIn, shekkRate } from "@/lib/currencies";
 import { useApp } from "@/lib/store";
 import type { Settings as SettingsShape, ThemePref } from "@/lib/store";
@@ -41,7 +43,13 @@ const CITIES = ["Jerusalem", "Tel Aviv", "Beit Shemesh", "Efrat", "Tzfat", "Haif
 function SettingsPage() {
   const ready = useOnboardedGate();
   const { state, setSetting, resetSettings, setFeedOptIn } = useApp();
+  const navigate = useNavigate();
   const s = state.settings;
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    void navigate({ to: "/auth", search: { next: "/" } });
+  }
 
   if (!ready)
     return (
@@ -343,6 +351,13 @@ function SettingsPage() {
           >
             <RotateCcw className="size-5 text-muted-foreground" />
             <span className="flex-1 text-sm font-semibold">Reset settings to default</span>
+          </button>
+          <button
+            onClick={() => void signOut()}
+            className="tap-flat flex w-full items-center gap-3 border-t border-border p-4 text-left"
+          >
+            <LogOut className="size-5 text-destructive" />
+            <span className="flex-1 text-sm font-semibold text-destructive">Sign out</span>
           </button>
         </Section>
 
