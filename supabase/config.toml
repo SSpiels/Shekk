@@ -1,1 +1,23 @@
 project_id = "jaqzmrnmxmyfpxbjzcsm"
+
+# Auth settings for this dev/test project. `enable_confirmations = false`
+# matters most: without it every signup needs a confirmation email, and a
+# brand new project's default (shared, unconfigured-SMTP) mailer hits
+# Supabase's built-in rate limit almost immediately - that's what was
+# blocking sign-up entirely after the project cutover.
+[auth]
+enabled = true
+site_url = "http://localhost:8080"
+additional_redirect_urls = [
+  "http://localhost:8080",
+  "http://localhost:8081",
+  "http://localhost:8082",
+  "http://localhost:8083",
+  "http://localhost:8084",
+  "http://localhost:8085",
+]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false

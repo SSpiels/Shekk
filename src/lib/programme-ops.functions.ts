@@ -429,6 +429,26 @@ export const staffStudentProfile = createServerFn({ method: "POST" })
     return profile(context.supabase, context.userId, data.cohortId, data.studentId);
   });
 
+/* ─────────────────────────────── Programme OS: Onboarding ────────────────────────── */
+
+export const staffOnboardingOverview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ cohortId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffOnboardingOverview: overview } = await import("@/lib/programme-ops.server");
+    return overview(context.supabase, context.userId, data.cohortId);
+  });
+
+export const staffNotifyOnboardingReminder = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ cohortId: uuid, studentIds: z.array(uuid).min(1).max(200) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { notifyOnboardingReminder } = await import("@/lib/programme-ops.server");
+    return notifyOnboardingReminder(context.supabase, context.userId, data.cohortId, data.studentIds);
+  });
+
 export const staffUpsertContent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => contentInput.parse(d))

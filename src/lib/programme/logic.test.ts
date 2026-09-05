@@ -8,12 +8,17 @@ import {
   eventFullForGoing,
   everyone,
   filterForViewer,
+  countOnboardingStatuses,
+  filterOnboardingStudents,
   filterStaffStudents,
   importantChanges,
   nextEvent,
   nowEvent,
   onboardingComplete,
+  onboardingItemStats,
+  onboardingStatus,
   openVotes,
+  overallOnboardingPercent,
   pendingAcknowledgements,
   pickActiveProgrammeId,
   placeDirectionsUrl,
@@ -29,6 +34,7 @@ import {
   type ProgrammeHub,
   type ProgrammeVote,
   type StaffContext,
+  type StaffOnboardingStudent,
   type StaffStudentSummary,
   type StaffWorkspace,
 } from "./logic";
@@ -524,5 +530,153 @@ describe("filterStaffStudents", () => {
     expect(
       filterStaffStudents(rows, { q: "rachel", groupId: "g2", onboarding: "" }).map((s) => s.userId),
     ).toEqual(["b"]);
+  });
+});
+
+describe("onboardingStatus", () => {
+  const now = new Date("2026-06-15T00:00:00.000Z");
+  const progress = (over: Partial<ChecklistProgress>): ChecklistProgress => ({
+    done: 0,
+    total: 0,
+    requiredDone: 0,
+    requiredTotal: 0,
+    percent: 0,
+    ...over,
+  });
+
+  it("is not_started when nothing is done yet", () => {
+    expect(onboardingStatus(progress({ done: 0, total: 3 }), [], now)).toBe("not_started");
+  });
+
+  it("is complete once every required item is done", () => {
+    const items = [{ required: true, done: true, dueOn: null }];
+    expect(
+      onboardingStatus(progress({ done: 1, total: 1, requiredDone: 1, requiredTotal: 1 }), items, now),
+    ).toBe("complete");
+  });
+
+  it("is needs_attention when a required item is overdue and undone", () => {
+    const items = [
+      { required: true, done: false, dueOn: "2026-01-01T00:00:00.000Z" },
+      { required: false, done: true, dueOn: null },
+    ];
+    expect(
+      onboardingStatus(progress({ done: 1, total: 2, requiredDone: 0, requiredTotal: 1 }), items, now),
+    ).toBe("needs_attention");
+  });
+
+  it("is in_progress when partway through with nothing overdue", () => {
+    const items = [
+      { required: true, done: false, dueOn: "2026-12-01T00:00:00.000Z" },
+      { required: false, done: true, dueOn: null },
+    ];
+    expect(
+      onboardingStatus(progress({ done: 1, total: 2, requiredDone: 0, requiredTotal: 1 }), items, now),
+    ).toBe("in_progress");
+  });
+
+  it("a required item with no due date is never treated as overdue", () => {
+    const items = [{ required: true, done: false, dueOn: null }];
+    expect(
+      onboardingStatus(progress({ done: 0, total: 1, requiredDone: 0, requiredTotal: 1 }), items, now),
+    ).toBe("not_started");
+  });
+});
+
+describe("onboardingItemStats", () => {
+  const student = (items: StaffOnboardingStudent["checklistItems"]) => ({ checklistItems: items });
+
+  it("computes per-item completion percent across the students given", () => {
+    const stats = onboardingItemStats([
+      student([{ id: "i1", itemKey: "visa", title: "Visa", details: null, dueOn: null, required: true, done: true, actionUrl: null }]),
+      student([{ id: "i1", itemKey: "visa", title: "Visa", details: null, dueOn: null, required: true, done: false, actionUrl: null }]),
+    ]);
+    expect(stats).toEqual([
+      { itemId: "i1", itemKey: "visa", title: "Visa", required: true, doneCount: 1, percent: 50 },
+    ]);
+  });
+
+  it("returns an empty list for no students", () => {
+    expect(onboardingItemStats([])).toEqual([]);
+  });
+});
+
+describe("overallOnboardingPercent", () => {
+  it("weights by required items when any exist", () => {
+    expect(
+      overallOnboardingPercent([
+        { done: 1, total: 4, requiredDone: 1, requiredTotal: 2, percent: 25 },
+        { done: 2, total: 4, requiredDone: 2, requiredTotal: 2, percent: 50 },
+      ]),
+    ).toBe(75); // (1+2) done of (2+2) required
+  });
+
+  it("falls back to overall percent when nobody has required items", () => {
+    expect(
+      overallOnboardingPercent([
+        { done: 2, total: 2, requiredDone: 0, requiredTotal: 0, percent: 100 },
+        { done: 0, total: 2, requiredDone: 0, requiredTotal: 0, percent: 0 },
+      ]),
+    ).toBe(50);
+  });
+
+  it("is 0 for an empty cohort", () => {
+    expect(overallOnboardingPercent([])).toBe(0);
+  });
+});
+
+describe("countOnboardingStatuses", () => {
+  it("tallies every status, including zero counts", () => {
+    expect(countOnboardingStatuses(["complete", "complete", "not_started"])).toEqual({
+      not_started: 1,
+      in_progress: 0,
+      needs_attention: 0,
+      complete: 2,
+    });
+  });
+});
+
+describe("filterOnboardingStudents", () => {
+  const student = (over: Partial<StaffOnboardingStudent>): StaffOnboardingStudent => ({
+    userId: "u1",
+    displayName: "Rachel Cohen",
+    handle: "rachel",
+    groups: [{ id: "g1", name: "Jerusalem A" }],
+    lifecycleStatus: null,
+    homeCountry: null,
+    israelCity: null,
+    accommodationArea: null,
+    arrivalDate: null,
+    joinedAt: "2026-01-01T00:00:00.000Z",
+    checklist: { done: 1, total: 2, requiredDone: 1, requiredTotal: 2, percent: 50 },
+    status: "in_progress",
+    checklistItems: [],
+    ...over,
+  });
+
+  it("matches search against display name and handle", () => {
+    const rows = [student({ userId: "a", displayName: "Rachel Cohen", handle: "rachel" })];
+    expect(filterOnboardingStudents(rows, { q: "rachel", groupId: "", status: "" })).toHaveLength(1);
+    expect(filterOnboardingStudents(rows, { q: "nobody", groupId: "", status: "" })).toHaveLength(0);
+  });
+
+  it("filters by group id", () => {
+    const rows = [
+      student({ userId: "a", groups: [{ id: "g1", name: "A" }] }),
+      student({ userId: "b", groups: [{ id: "g2", name: "B" }] }),
+    ];
+    expect(
+      filterOnboardingStudents(rows, { q: "", groupId: "g2", status: "" }).map((s) => s.userId),
+    ).toEqual(["b"]);
+  });
+
+  it("filters by status", () => {
+    const rows = [
+      student({ userId: "a", status: "needs_attention" }),
+      student({ userId: "b", status: "complete" }),
+    ];
+    expect(
+      filterOnboardingStudents(rows, { q: "", groupId: "", status: "needs_attention" }).map((s) => s.userId),
+    ).toEqual(["a"]);
   });
 });

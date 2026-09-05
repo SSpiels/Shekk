@@ -648,6 +648,141 @@ export function filterStaffStudents(
   });
 }
 
+/* ─────────────────────── Onboarding (Programme OS staff view) ──────────────────────
+ * The cohort-wide companion to the Students profile's per-student checklist tab —
+ * same StaffStudentChecklistItem shape, same checklistProgress/onboardingComplete
+ * maths, just aggregated across everyone instead of shown one student at a time.
+ * See lib/programme-ops.server.ts's staffOnboardingOverview for assembly. */
+
+export type OnboardingStatus = "not_started" | "in_progress" | "needs_attention" | "complete";
+
+/**
+ * "Needs attention" is the operationally useful distinction from plain
+ * "in progress": a required item that's actually overdue is something staff
+ * need to chase, whereas being partway through with no overdue item yet is
+ * just normal progress.
+ */
+export function onboardingStatus(
+  checklist: ChecklistProgress,
+  items: Pick<StaffStudentChecklistItem, "required" | "done" | "dueOn">[],
+  now: Date = new Date(),
+): OnboardingStatus {
+  if (checklist.done === 0) return "not_started";
+  if (onboardingComplete(checklist)) return "complete";
+  const overdue = items.some(
+    (i) => i.required && !i.done && i.dueOn !== null && new Date(i.dueOn) < now,
+  );
+  return overdue ? "needs_attention" : "in_progress";
+}
+
+export type StaffOnboardingStudent = StaffStudentSummary & {
+  status: OnboardingStatus;
+  checklistItems: StaffStudentChecklistItem[];
+};
+
+export type OnboardingItemStat = {
+  itemId: string;
+  itemKey: string;
+  title: string;
+  required: boolean;
+  doneCount: number;
+  percent: number;
+};
+
+/** One row per checklist item (first-seen order), aggregated across the students passed in. */
+export function onboardingItemStats(
+  students: Pick<StaffOnboardingStudent, "checklistItems">[],
+): OnboardingItemStat[] {
+  const total = students.length;
+  const byItem = new Map<
+    string,
+    { itemKey: string; title: string; required: boolean; doneCount: number }
+  >();
+  for (const st of students) {
+    for (const item of st.checklistItems) {
+      const entry = byItem.get(item.id) ?? {
+        itemKey: item.itemKey,
+        title: item.title,
+        required: item.required,
+        doneCount: 0,
+      };
+      if (item.done) entry.doneCount += 1;
+      byItem.set(item.id, entry);
+    }
+  }
+  return [...byItem.entries()].map(([itemId, v]) => ({
+    itemId,
+    itemKey: v.itemKey,
+    title: v.title,
+    required: v.required,
+    doneCount: v.doneCount,
+    percent: total ? Math.round((v.doneCount / total) * 100) : 0,
+  }));
+}
+
+/** Cohort-wide completion %, weighted by required items the same way a single student's is. */
+export function overallOnboardingPercent(checklists: ChecklistProgress[]): number {
+  const requiredTotal = checklists.reduce((sum, c) => sum + c.requiredTotal, 0);
+  if (requiredTotal > 0) {
+    const requiredDone = checklists.reduce((sum, c) => sum + c.requiredDone, 0);
+    return Math.round((requiredDone / requiredTotal) * 100);
+  }
+  const total = checklists.reduce((sum, c) => sum + c.total, 0);
+  if (total === 0) return 0;
+  const done = checklists.reduce((sum, c) => sum + c.done, 0);
+  return Math.round((done / total) * 100);
+}
+
+export function countOnboardingStatuses(
+  statuses: OnboardingStatus[],
+): Record<OnboardingStatus, number> {
+  const counts: Record<OnboardingStatus, number> = {
+    not_started: 0,
+    in_progress: 0,
+    needs_attention: 0,
+    complete: 0,
+  };
+  for (const s of statuses) counts[s] += 1;
+  return counts;
+}
+
+export type StaffOnboardingOverview = {
+  cohortId: string;
+  totalStudents: number;
+  overallPercent: number;
+  statusCounts: Record<OnboardingStatus, number>;
+  itemStats: OnboardingItemStat[];
+  students: StaffOnboardingStudent[];
+};
+
+export type StaffOnboardingStatusFilter = "" | OnboardingStatus;
+
+export type StaffOnboardingFilters = {
+  q: string;
+  groupId: string;
+  status: StaffOnboardingStatusFilter;
+};
+
+export const emptyStaffOnboardingFilters: StaffOnboardingFilters = {
+  q: "",
+  groupId: "",
+  status: "",
+};
+
+/** Pure so /staff/onboarding can stay URL-driven, same convention as filterStaffStudents. */
+export function filterOnboardingStudents(
+  students: StaffOnboardingStudent[],
+  filters: StaffOnboardingFilters,
+): StaffOnboardingStudent[] {
+  const q = filters.q.trim().toLowerCase();
+  return students.filter((st) => {
+    if (q && !`${st.displayName} ${st.handle ?? ""}`.toLowerCase().includes(q)) return false;
+    if (filters.groupId && !st.groups.some((g) => g.id === filters.groupId)) return false;
+    if (filters.status && st.status !== filters.status) return false;
+    return true;
+  });
+}
+
 /** Can this participant cast (or change) a vote right now, and why not? */
 export function voteBlockedReason(
   vote: ProgrammeVote,

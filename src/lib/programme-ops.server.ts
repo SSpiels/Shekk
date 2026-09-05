@@ -24,6 +24,10 @@ import {
   type EventChange,
   type EventStatus,
   type NotifyLevel,
+  onboardingStatus,
+  onboardingItemStats,
+  overallOnboardingPercent,
+  countOnboardingStatuses,
   type ProgrammeAnnouncementRow,
   type ProgrammeContactRow,
   type ProgrammeDoc,
@@ -34,6 +38,8 @@ import {
   type ProgrammePlace,
   type ProgrammeVote,
   type StaffContext,
+  type StaffOnboardingOverview,
+  type StaffOnboardingStudent,
   type StaffPermission,
   type StaffRole,
   type StaffSession,
@@ -1355,7 +1361,11 @@ async function loadCohortRosterRaw(service: Db, cohortId: string): Promise<Cohor
       .select("id, name")
       .eq("cohort_id", cohortId)
       .order("sort_order"),
-    service.from("programme_checklist_items").select("id, required").eq("cohort_id", cohortId),
+    service
+      .from("programme_checklist_items")
+      .select("id, item_key, title, details, due_on, required, action_url")
+      .eq("cohort_id", cohortId)
+      .order("sort_order"),
     service
       .from("programme_checklist_progress")
       .select("user_id, item_id, done")
@@ -1598,6 +1608,94 @@ export async function staffStudentProfile(
     cohortName: String(cohort["name"]),
     checklistItems,
   };
+}
+
+/**
+ * The cohort-wide Onboarding dashboard: every active student's checklist
+ * status and per-item completion, in one batched load — same
+ * loadCohortRosterRaw() the Students roster uses, so this never duplicates
+ * the join logic or adds a second round of per-student queries.
+ */
+export async function staffOnboardingOverview(
+  db: Db,
+  userId: string,
+  cohortId: string,
+): Promise<StaffOnboardingOverview> {
+  await requireStaff(db, userId, cohortId, "participants");
+  const service = await adminDb();
+  const raw = await loadCohortRosterRaw(service, cohortId);
+
+  const students: StaffOnboardingStudent[] = raw.memberships.map((m) => {
+    const uid = String(m["user_id"]);
+    const doneItemIds = new Set(
+      (raw.progressByUser.get(uid) ?? []).filter((p) => p["done"]).map((p) => String(p["item_id"])),
+    );
+    const checklistItems: StaffStudentChecklistItem[] = raw.checklistItems.map((i) => ({
+      id: String(i["id"]),
+      itemKey: String(i["item_key"]),
+      title: String(i["title"]),
+      details: s(i, "details"),
+      dueOn: s(i, "due_on"),
+      required: Boolean(i["required"]),
+      done: doneItemIds.has(String(i["id"])),
+      actionUrl: s(i, "action_url"),
+    }));
+    const checklist = checklistProgress(checklistItems);
+    const summary = summariseStudent(uid, m, raw, checklist);
+    return {
+      ...summary,
+      status: onboardingStatus(checklist, checklistItems),
+      checklistItems,
+    };
+  });
+
+  return {
+    cohortId,
+    totalStudents: students.length,
+    overallPercent: overallOnboardingPercent(students.map((st) => st.checklist)),
+    statusCounts: countOnboardingStatuses(students.map((st) => st.status)),
+    itemStats: onboardingItemStats(students),
+    students,
+  };
+}
+
+/**
+ * The one bulk action Phase 5 ships with: an in-app nudge, reusing the same
+ * inbox every other programme_notifications write already lands in (see
+ * notifyAudience above) — no email/push infrastructure exists, so this
+ * doesn't pretend to send either. Never trusts the caller's student-id list
+ * on its own — re-checks active membership before writing anything.
+ */
+export async function notifyOnboardingReminder(
+  db: Db,
+  userId: string,
+  cohortId: string,
+  studentIds: string[],
+): Promise<{ notified: number }> {
+  await requireStaff(db, userId, cohortId, "participants");
+  if (!studentIds.length) return { notified: 0 };
+  const service = await adminDb();
+
+  const { data: members } = await service
+    .from("programme_memberships")
+    .select("user_id")
+    .eq("cohort_id", cohortId)
+    .eq("status", "active")
+    .in("user_id", studentIds);
+  const validIds = ((members ?? []) as Row[]).map((m) => String(m["user_id"]));
+  if (!validIds.length) return { notified: 0 };
+
+  const { error } = await service.from("programme_notifications").insert(
+    validIds.map((student_user_id) => ({
+      user_id: student_user_id,
+      cohort_id: cohortId,
+      level: "notify",
+      title: "Finish your onboarding checklist",
+      body: "Your programme team noticed you still have outstanding onboarding items — take a look when you get a chance.",
+    })) as never,
+  );
+  if (error) throw error;
+  return { notified: validIds.length };
 }
 
 export type SimpleContentInput = {
