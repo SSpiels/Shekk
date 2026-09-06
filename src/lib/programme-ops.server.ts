@@ -40,6 +40,8 @@ import {
   type StaffContext,
   type StaffOnboardingOverview,
   type StaffOnboardingStudent,
+  type StaffOverviewAnnouncement,
+  type StaffOverviewEvent,
   type StaffPermission,
   type StaffRole,
   type StaffSession,
@@ -1656,6 +1658,58 @@ export async function staffOnboardingOverview(
     statusCounts: countOnboardingStatuses(students.map((st) => st.status)),
     itemStats: onboardingItemStats(students),
     students,
+  };
+}
+
+/**
+ * The staff landing page. Events/announcements read through the caller's own
+ * session client, not the service role - "Participants read events aimed at
+ * them" and "Cohort members read announcements" both already OR in
+ * is_cohort_staff(), so RLS covers staff here without a bypass (see the
+ * Phase 4.5 audit note on staffStudentRoster/staffStudentProfile for why
+ * member_handles/member_travel are the exception, not the rule).
+ */
+export async function staffOverview(
+  db: Db,
+  userId: string,
+  cohortId: string,
+): Promise<{
+  onboarding: StaffOnboardingOverview;
+  upcomingEvents: StaffOverviewEvent[];
+  recentAnnouncements: StaffOverviewAnnouncement[];
+}> {
+  const [onboarding, { data: events }, { data: announcements }] = await Promise.all([
+    staffOnboardingOverview(db, userId, cohortId),
+    db
+      .from("programme_events")
+      .select("id, title, starts_at, location_label")
+      .eq("cohort_id", cohortId)
+      .gte("starts_at", new Date().toISOString())
+      .order("starts_at")
+      .limit(5),
+    db
+      .from("programme_announcements")
+      .select("id, title, published_at, pinned")
+      .eq("cohort_id", cohortId)
+      .order("pinned", { ascending: false })
+      .order("published_at", { ascending: false })
+      .limit(3),
+  ]);
+
+  return {
+    onboarding,
+    upcomingEvents: ((events ?? []) as Row[]).map((e) => ({
+      id: String(e["id"]),
+      title: String(e["title"]),
+      startsAt: String(e["starts_at"]),
+      locationLabel: s(e, "location_label"),
+    })),
+    recentAnnouncements: ((announcements ?? []) as Row[]).map((a) => ({
+      id: String(a["id"]),
+      title: String(a["title"]),
+      publishedAt: String(a["published_at"]),
+      pinned: Boolean(a["pinned"]),
+    })),
   };
 }
 

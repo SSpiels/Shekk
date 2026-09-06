@@ -783,6 +783,27 @@ export function filterOnboardingStudents(
   });
 }
 
+/* ─────────────────────── Overview (Programme OS staff view) ──────────────────────
+ * The staff landing page: a glance at student/onboarding health plus what's
+ * coming up, not a second events/announcements management surface - those
+ * are Calendar's and Communications' jobs. Deliberately lighter-weight than
+ * ProgrammeEvent/ProgrammeAnnouncementRow (no RSVP/ack joins): this is a
+ * preview list, not the real thing. */
+
+export type StaffOverviewEvent = {
+  id: string;
+  title: string;
+  startsAt: string;
+  locationLabel: string | null;
+};
+
+export type StaffOverviewAnnouncement = {
+  id: string;
+  title: string;
+  publishedAt: string;
+  pinned: boolean;
+};
+
 /** Can this participant cast (or change) a vote right now, and why not? */
 export function voteBlockedReason(
   vote: ProgrammeVote,

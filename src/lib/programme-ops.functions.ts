@@ -429,6 +429,16 @@ export const staffStudentProfile = createServerFn({ method: "POST" })
     return profile(context.supabase, context.userId, data.cohortId, data.studentId);
   });
 
+/* ─────────────────────────────── Programme OS: Overview ────────────────────────── */
+
+export const staffOverview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ cohortId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffOverview: overview } = await import("@/lib/programme-ops.server");
+    return overview(context.supabase, context.userId, data.cohortId);
+  });
+
 /* ─────────────────────────────── Programme OS: Onboarding ────────────────────────── */
 
 export const staffOnboardingOverview = createServerFn({ method: "POST" })
