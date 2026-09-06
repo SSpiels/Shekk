@@ -40,6 +40,21 @@ const PROMISES = [
   "The arrival admin and daily life, in one place",
 ];
 
+/**
+ * Google/Apple sign-in is disabled: it went through a Lovable-hosted OAuth
+ * broker (@lovable.dev/cloud-auth-js's default oauthBrokerUrl,
+ * "/~oauth/initiate") that only ever existed on Lovable's own hosting -
+ * there's no matching route anywhere in this repo, and Vercel has no
+ * knowledge of it either. It's been silently failing for every visitor
+ * since the move off Lovable, not just since the Supabase project cutover.
+ * Restoring this needs real Google/Apple OAuth apps configured directly in
+ * Supabase (Authentication -> Providers) - external account setup, not a
+ * code fix - then swapping the social()/OAuthHandoff popup flow below for a
+ * plain supabase.auth.signInWithOAuth({ provider, options: { redirectTo } })
+ * redirect, which is what Supabase's own OAuth expects.
+ */
+const GOOGLE_APPLE_OAUTH_ENABLED = false;
+
 const OAUTH_MESSAGE_TYPE = "authorization_response";
 const TRUSTED_OAUTH_ORIGINS = new Set([
   "https://oauth.lovable.app",
@@ -415,7 +430,7 @@ function Auth() {
           )}
         </div>
 
-        {mode !== "forgot" && (
+        {GOOGLE_APPLE_OAUTH_ENABLED && mode !== "forgot" && (
           <>
             <button
               type="button"
