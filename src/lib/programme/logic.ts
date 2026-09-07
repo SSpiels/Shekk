@@ -804,6 +804,91 @@ export type StaffOverviewAnnouncement = {
   pinned: boolean;
 };
 
+/* ─────────────────────── Communications (Programme OS staff view) ──────────────────────
+ * Built directly on the announcement/audience/acknowledgement engine the
+ * mobile hub already uses (ProgrammeAnnouncementRow, Audience,
+ * programme_acknowledgements) — the one thing that didn't already exist is
+ * the staff-side rollup: of an announcement's *actual eligible audience*
+ * (not the whole cohort), how many have acknowledged it, and who hasn't.
+ * announcementAcknowledgementStats is that rollup, kept pure so it can be
+ * unit tested without a database and can never drift from audienceAllows(),
+ * the same predicate the RLS policy and notifyAudience() targeting use. */
+
+export type StaffAnnouncementSummary = {
+  id: string;
+  title: string;
+  bodyPreview: string;
+  priority: Priority;
+  pinned: boolean;
+  requiresAck: boolean;
+  audience: Audience;
+  publishedAt: string;
+  linkUrl: string | null;
+  eligibleCount: number;
+  ackCount: number;
+  outstandingCount: number;
+};
+
+export type StaffCommunicationsOverview = {
+  cohortId: string;
+  totalStudents: number;
+  announcements: StaffAnnouncementSummary[];
+};
+
+export type StaffAnnouncementStudentRef = {
+  userId: string;
+  displayName: string;
+  handle: string | null;
+};
+
+export type StaffAnnouncementAcknowledgements = {
+  announcementId: string;
+  eligibleCount: number;
+  ackCount: number;
+  outstandingCount: number;
+  outstanding: StaffAnnouncementStudentRef[];
+};
+
+/** The roster shape announcementAcknowledgementStats needs — nothing more. */
+export type CommunicationsMember = {
+  userId: string;
+  displayName: string;
+  handle: string | null;
+  groupIds: string[];
+};
+
+/**
+ * Given an announcement's audience and the cohort roster, who is actually
+ * eligible, how many of those have acknowledged, and — by name — who is
+ * still outstanding. `eligible` is computed with the same audienceAllows()
+ * predicate used everywhere else in this file, so this can never quietly
+ * diverge into counting "everyone in the cohort" instead of "everyone this
+ * announcement was actually sent to."
+ */
+export function announcementAcknowledgementStats(
+  audience: Audience,
+  members: CommunicationsMember[],
+  ackedUserIds: Set<string> | string[],
+): {
+  eligibleCount: number;
+  ackCount: number;
+  outstandingCount: number;
+  outstanding: StaffAnnouncementStudentRef[];
+} {
+  const acked = ackedUserIds instanceof Set ? ackedUserIds : new Set(ackedUserIds);
+  const eligible = members.filter((m) => audienceAllows(audience, m));
+  const outstanding = eligible
+    .filter((m) => !acked.has(m.userId))
+    .map((m) => ({ userId: m.userId, displayName: m.displayName, handle: m.handle }))
+    .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  return {
+    eligibleCount: eligible.length,
+    ackCount: eligible.length - outstanding.length,
+    outstandingCount: outstanding.length,
+    outstanding,
+  };
+}
+
 /** Can this participant cast (or change) a vote right now, and why not? */
 export function voteBlockedReason(
   vote: ProgrammeVote,

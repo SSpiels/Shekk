@@ -349,6 +349,25 @@ export const staffDeleteAnnouncement = createServerFn({ method: "POST" })
     return deleteAnnouncement(context.supabase, context.userId, data.id);
   });
 
+/* ─────────────────────── Programme OS: Communications ──────────────────────── */
+
+export const staffCommunicationsOverview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ cohortId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffCommunicationsOverview: overview } = await import("@/lib/programme-ops.server");
+    return overview(context.supabase, context.userId, data.cohortId);
+  });
+
+export const staffAnnouncementAcknowledgements = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ cohortId: uuid, announcementId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffAnnouncementAcknowledgements: detail } =
+      await import("@/lib/programme-ops.server");
+    return detail(context.supabase, context.userId, data.cohortId, data.announcementId);
+  });
+
 /* ─────────────────────────────────── Staff: votes ─────────────────────────── */
 
 export const staffCreateVote = createServerFn({ method: "POST" })

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  announcementAcknowledgementStats,
   audienceAllows,
   audienceLabel,
   checklistProgress,
@@ -30,6 +31,7 @@ import {
   type Audience,
   type ChecklistItem,
   type ChecklistProgress,
+  type CommunicationsMember,
   type ProgrammeEvent,
   type ProgrammeHub,
   type ProgrammeVote,
@@ -678,5 +680,82 @@ describe("filterOnboardingStudents", () => {
     expect(
       filterOnboardingStudents(rows, { q: "", groupId: "", status: "needs_attention" }).map((s) => s.userId),
     ).toEqual(["a"]);
+  });
+});
+
+describe("announcementAcknowledgementStats", () => {
+  const member = (over: Partial<CommunicationsMember> = {}): CommunicationsMember => ({
+    userId: "u1",
+    displayName: "Rachel Cohen",
+    handle: "rachel",
+    groupIds: [],
+    ...over,
+  });
+
+  it("everyone audience: eligible is the whole roster, not just those in a group", () => {
+    const members = [
+      member({ userId: "a", displayName: "Ann", groupIds: ["bus1"] }),
+      member({ userId: "b", displayName: "Ben", groupIds: [] }),
+    ];
+    const stats = announcementAcknowledgementStats(everyone, members, []);
+    expect(stats.eligibleCount).toBe(2);
+    expect(stats.outstandingCount).toBe(2);
+  });
+
+  it("groups audience: only members of a targeted group are eligible", () => {
+    const members = [
+      member({ userId: "a", displayName: "Ann", groupIds: ["bus1"] }),
+      member({ userId: "b", displayName: "Ben", groupIds: ["bus2"] }),
+      member({ userId: "c", displayName: "Cara", groupIds: ["bus1", "bus2"] }),
+    ];
+    const audience: Audience = { kind: "groups", groupIds: ["bus1"], userIds: [] };
+    const stats = announcementAcknowledgementStats(audience, members, []);
+    expect(stats.eligibleCount).toBe(2);
+    expect(stats.outstanding.map((s) => s.userId).sort()).toEqual(["a", "c"]);
+  });
+
+  it("individuals audience: only the named students are eligible", () => {
+    const members = [
+      member({ userId: "a", displayName: "Ann" }),
+      member({ userId: "b", displayName: "Ben" }),
+    ];
+    const audience: Audience = { kind: "individuals", groupIds: [], userIds: ["b"] };
+    const stats = announcementAcknowledgementStats(audience, members, []);
+    expect(stats.eligibleCount).toBe(1);
+    expect(stats.outstanding.map((s) => s.userId)).toEqual(["b"]);
+  });
+
+  it("the denominator is the eligible audience, not the whole cohort", () => {
+    const members = [
+      member({ userId: "a", displayName: "Ann", groupIds: ["bus1"] }),
+      member({ userId: "b", displayName: "Ben", groupIds: ["bus2"] }),
+      member({ userId: "c", displayName: "Cara", groupIds: ["bus2"] }),
+    ];
+    const audience: Audience = { kind: "groups", groupIds: ["bus2"], userIds: [] };
+    const stats = announcementAcknowledgementStats(audience, members, ["b"]);
+    // 2 eligible (b, c), not 3 — and 1 of those 2 has acknowledged.
+    expect(stats.eligibleCount).toBe(2);
+    expect(stats.ackCount).toBe(1);
+    expect(stats.outstandingCount).toBe(1);
+    expect(stats.outstanding.map((s) => s.userId)).toEqual(["c"]);
+  });
+
+  it("an acknowledgement from someone no longer eligible does not inflate ackCount", () => {
+    const members = [member({ userId: "a", displayName: "Ann", groupIds: ["bus1"] })];
+    const audience: Audience = { kind: "groups", groupIds: ["bus1"], userIds: [] };
+    // "ghost" acknowledged but is not part of the current roster/eligible set.
+    const stats = announcementAcknowledgementStats(audience, members, ["a", "ghost"]);
+    expect(stats.eligibleCount).toBe(1);
+    expect(stats.ackCount).toBe(1);
+    expect(stats.outstandingCount).toBe(0);
+  });
+
+  it("outstanding list is sorted by display name", () => {
+    const members = [
+      member({ userId: "a", displayName: "Zara" }),
+      member({ userId: "b", displayName: "Amit" }),
+    ];
+    const stats = announcementAcknowledgementStats(everyone, members, []);
+    expect(stats.outstanding.map((s) => s.displayName)).toEqual(["Amit", "Zara"]);
   });
 });

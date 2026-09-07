@@ -11,9 +11,11 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  announcementAcknowledgementStats,
   checklistProgress,
   DEFAULT_CHECKLIST,
   type ChecklistProgress,
+  type CommunicationsMember,
   emptyHub,
   emptyStaffSession,
   everyone,
@@ -28,6 +30,7 @@ import {
   onboardingItemStats,
   overallOnboardingPercent,
   countOnboardingStatuses,
+  type Priority,
   type ProgrammeAnnouncementRow,
   type ProgrammeContactRow,
   type ProgrammeDoc,
@@ -37,6 +40,9 @@ import {
   type ProgrammeNotification,
   type ProgrammePlace,
   type ProgrammeVote,
+  type StaffAnnouncementAcknowledgements,
+  type StaffAnnouncementSummary,
+  type StaffCommunicationsOverview,
   type StaffContext,
   type StaffOnboardingOverview,
   type StaffOnboardingStudent,
@@ -1466,6 +1472,31 @@ function summariseStudent(
   };
 }
 
+/**
+ * The lighter roster shape Communications needs (no checklist join) —
+ * fed straight into announcementAcknowledgementStats()'s audienceAllows()
+ * check, so eligibility here can never drift from Students'/Onboarding's.
+ */
+function rosterMembers(
+  raw: Pick<CohortRosterRaw, "memberships" | "groupsByUser" | "handleBy" | "travelBy">,
+): CommunicationsMember[] {
+  return raw.memberships.map((m) => {
+    const uid = String(m["user_id"]);
+    const h = raw.handleBy.get(uid);
+    const t = raw.travelBy.get(uid);
+    const displayName =
+      (t && s(t, "display_name")) ||
+      (h && s(h, "display_name")) ||
+      (h ? `@${h["handle"]}` : "Student");
+    return {
+      userId: uid,
+      displayName: displayName ?? "Student",
+      handle: h ? String(h["handle"]) : null,
+      groupIds: raw.groupsByUser.get(uid) ?? [],
+    };
+  });
+}
+
 /** The Students roster: one summary row per active member, no per-student round trips. */
 export async function staffStudentRoster(
   db: Db,
@@ -1659,6 +1690,126 @@ export async function staffOnboardingOverview(
     itemStats: onboardingItemStats(students),
     students,
   };
+}
+
+/* ─────────────────────── Programme OS: Communications ─────────────────────── */
+
+/**
+ * Every announcement in the cohort, each with how many of its *actual
+ * eligible audience* (not the whole cohort) have acknowledged it. Read
+ * access is gated on the `announcements` permission — the same one that
+ * gates creating them; the per-student identity of who's outstanding is a
+ * separate, narrower permission (`acknowledgements`), granted only by
+ * staffAnnouncementAcknowledgements below.
+ */
+export async function staffCommunicationsOverview(
+  db: Db,
+  userId: string,
+  cohortId: string,
+): Promise<StaffCommunicationsOverview> {
+  await requireStaff(db, userId, cohortId, "announcements");
+  const service = await adminDb();
+
+  const [raw, audiences, annRes, ackRes] = await Promise.all([
+    loadCohortRosterRaw(service, cohortId),
+    loadAudiences(service, cohortId),
+    service
+      .from("programme_announcements")
+      .select("*")
+      .eq("cohort_id", cohortId)
+      .order("pinned", { ascending: false })
+      .order("published_at", { ascending: false }),
+    service
+      .from("programme_acknowledgements")
+      .select("subject_id, user_id")
+      .eq("cohort_id", cohortId)
+      .eq("subject_type", "announcement"),
+  ]);
+
+  const members = rosterMembers(raw);
+  const ackByAnnouncement = new Map<string, Set<string>>();
+  for (const a of (ackRes.data ?? []) as Row[]) {
+    const key = String(a["subject_id"]);
+    const set = ackByAnnouncement.get(key) ?? new Set<string>();
+    set.add(String(a["user_id"]));
+    ackByAnnouncement.set(key, set);
+  }
+
+  const announcements: StaffAnnouncementSummary[] = ((annRes.data ?? []) as Row[]).map((a) => {
+    const id = String(a["id"]);
+    const audience = audienceFor(audiences, "announcement", id, s(a, "audience_kind"));
+    const stats = announcementAcknowledgementStats(
+      audience,
+      members,
+      ackByAnnouncement.get(id) ?? new Set(),
+    );
+    return {
+      id,
+      title: String(a["title"]),
+      bodyPreview: String(a["body"]).slice(0, 200),
+      priority: (s(a, "priority") ?? "normal") as Priority,
+      pinned: Boolean(a["pinned"]),
+      requiresAck: Boolean(a["requires_ack"]),
+      audience,
+      publishedAt: String(a["published_at"]),
+      linkUrl: s(a, "link_url"),
+      eligibleCount: stats.eligibleCount,
+      ackCount: stats.ackCount,
+      outstandingCount: stats.outstandingCount,
+    };
+  });
+
+  return { cohortId, totalStudents: members.length, announcements };
+}
+
+/**
+ * One announcement's acknowledgement drill-down: eligible/ack/outstanding
+ * counts plus the outstanding students by name, for staff to act on. Gated
+ * on the `acknowledgements` permission, separately from `announcements`
+ * (composing/publishing) — a role can be given one without the other.
+ *
+ * Never trusts the caller's claim that announcementId belongs to cohortId;
+ * the row is re-read and its own cohort_id checked, same defensive pattern
+ * as staffStudentProfile.
+ */
+export async function staffAnnouncementAcknowledgements(
+  db: Db,
+  userId: string,
+  cohortId: string,
+  announcementId: string,
+): Promise<StaffAnnouncementAcknowledgements | null> {
+  await requireStaff(db, userId, cohortId, "acknowledgements");
+  const service = await adminDb();
+
+  const { data: annRow } = await service
+    .from("programme_announcements")
+    .select("id, audience_kind, cohort_id")
+    .eq("id", announcementId)
+    .maybeSingle();
+  if (!annRow || String((annRow as Row)["cohort_id"]) !== cohortId) return null;
+
+  const [raw, audiences, ackRes] = await Promise.all([
+    loadCohortRosterRaw(service, cohortId),
+    loadAudiences(service, cohortId),
+    service
+      .from("programme_acknowledgements")
+      .select("user_id")
+      .eq("cohort_id", cohortId)
+      .eq("subject_type", "announcement")
+      .eq("subject_id", announcementId),
+  ]);
+
+  const audience = audienceFor(
+    audiences,
+    "announcement",
+    announcementId,
+    s(annRow as Row, "audience_kind"),
+  );
+  const members = rosterMembers(raw);
+  const acked = new Set(((ackRes.data ?? []) as Row[]).map((r) => String(r["user_id"])));
+  const stats = announcementAcknowledgementStats(audience, members, acked);
+
+  return { announcementId, ...stats };
 }
 
 /**
