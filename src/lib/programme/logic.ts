@@ -464,20 +464,22 @@ export function delayBy(startsAt: string, minutes: number): string {
   return new Date(new Date(startsAt).getTime() + minutes * 60_000).toISOString();
 }
 
-export function isSameLocalDay(iso: string, ref = new Date()): boolean {
-  const d = new Date(iso);
-  return (
-    d.getFullYear() === ref.getFullYear() &&
-    d.getMonth() === ref.getMonth() &&
-    d.getDate() === ref.getDate()
-  );
+/**
+ * Is `iso` the same programme day as `ref`? Deliberately Israel-local, not
+ * the viewer's browser timezone — a student checking "what's today" from
+ * London the night before they fly must see Israel's today, not London's.
+ * Uses israelDateKey (defined further down this file) so this can never
+ * quietly diverge from the Calendar grouping key.
+ */
+export function isSameIsraelDay(iso: string, ref = new Date()): boolean {
+  return israelDateKey(iso) === israelDateKey(ref.toISOString());
 }
 
 const liveStatuses: EventStatus[] = ["scheduled", "confirmed", "tentative", "delayed", "moved"];
 
 export function todaysEvents(events: ProgrammeEvent[], ref = new Date()): ProgrammeEvent[] {
   return events
-    .filter((e) => isSameLocalDay(e.startsAt, ref))
+    .filter((e) => isSameIsraelDay(e.startsAt, ref))
     .sort((a, b) => a.startsAt.localeCompare(b.startsAt));
 }
 
@@ -1454,8 +1456,18 @@ function parseWhen(value: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-const clockOf = (d: Date) => d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-const dateOf = (d: Date) => d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+// Event-change copy is always about Israel-scheduled programme time, so —
+// like fmtIsraelTime/fmtIsraelDay — these read the clock in Asia/Jerusalem
+// regardless of the viewer's own browser timezone.
+const clockOf = (d: Date) =>
+  d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: ISRAEL_TIMEZONE });
+const dateOf = (d: Date) =>
+  d.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: ISRAEL_TIMEZONE,
+  });
 
 function shiftWords(minutes: number): string {
   const abs = Math.abs(minutes);
@@ -1477,7 +1489,10 @@ export function changeLine(change: Pick<EventChange, "field" | "before" | "after
   const after = change.after?.trim() ? parseWhen(change.after) : null;
 
   if (after && before) {
-    const sameDay = before.toDateString() === after.toDateString();
+    // Same Israel-calendar day, not the viewer's own — a delay from 23:30 to
+    // 00:10 Israel time is still "today" in Israel even if the viewer's
+    // browser has already rolled over to the next date.
+    const sameDay = israelDateKey(before.toISOString()) === israelDateKey(after.toISOString());
     if (sameDay) {
       const minutes = Math.round((after.getTime() - before.getTime()) / 60000);
       const head = minutes === 0 ? label : shiftWords(minutes);
@@ -1486,7 +1501,7 @@ export function changeLine(change: Pick<EventChange, "field" | "before" | "after
     return `Moved to ${dateOf(after)} · ${clockOf(before)} → ${dateOf(after)} ${clockOf(after)}`;
   }
   if (after) {
-    const isToday = after.toDateString() === new Date().toDateString();
+    const isToday = israelDateKey(after.toISOString()) === israelDateKey(new Date().toISOString());
     return `${label}: ${isToday ? clockOf(after) : `${dateOf(after)} ${clockOf(after)}`}`;
   }
   if (change.after && change.before) return `${label}: ${change.before} → ${change.after}`;

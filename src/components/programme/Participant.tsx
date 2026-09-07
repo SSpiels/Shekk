@@ -36,6 +36,12 @@ import {
 import { cleanError, useParticipantActions } from "@/lib/useProgrammeHub";
 import {
   eventFullForGoing,
+  // Event times are always Israel-scheduled programme time, shown the same
+  // way regardless of the viewer's own browser timezone — see Bits.tsx's
+  // fmtDay/fmtTime (still used below for announcements/votes/checklist/
+  // notification timestamps, which aren't tied to Israel wall-clock time).
+  fmtIsraelDay,
+  fmtIsraelTime,
   placeDirectionsUrl,
   voteBlockedReason,
   type ChecklistItem,
@@ -66,8 +72,10 @@ export function EventRow({
     <button type="button" onClick={onOpen} className="tap block w-full text-left">
       <Card className="flex items-start gap-3">
         <span className="mt-0.5 flex size-12 shrink-0 flex-col items-center justify-center rounded-xl bg-primary-soft text-[11px] font-bold leading-tight text-primary">
-          <span>{fmtTime(event.startsAt)}</span>
-          {showDay ? <span className="text-[9px] opacity-70">{fmtDay(event.startsAt)}</span> : null}
+          <span>{fmtIsraelTime(event.startsAt)}</span>
+          {showDay ? (
+            <span className="text-[9px] opacity-70">{fmtIsraelDay(event.startsAt)}</span>
+          ) : null}
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex flex-wrap items-center gap-1.5">
@@ -138,12 +146,12 @@ export function EventSheet({
         </div>
 
         <p className="text-sm font-semibold">
-          {fmtDay(event.startsAt)} · {fmtTime(event.startsAt)}
-          {event.endsAt ? ` – ${fmtTime(event.endsAt)}` : ""}
+          {fmtIsraelDay(event.startsAt)} · {fmtIsraelTime(event.startsAt)}
+          {event.endsAt ? ` – ${fmtIsraelTime(event.endsAt)}` : ""}
         </p>
         {event.originalStartsAt && event.originalStartsAt !== event.startsAt ? (
           <p className="text-[12px] text-muted-foreground line-through">
-            Was {fmtTime(event.originalStartsAt)}
+            Was {fmtIsraelTime(event.originalStartsAt)}
           </p>
         ) : null}
         <Freshness event={event} />

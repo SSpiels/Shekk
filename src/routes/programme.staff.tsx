@@ -28,8 +28,9 @@ import {
   Segmented,
   Sheet,
   StatusChip,
+  // Still used below for announcement dates and checklist due-dates, which
+  // aren't Israel wall-clock times the way event start/end times are.
   fmtDay,
-  fmtTime,
   inputClass,
 } from "@/components/programme/Bits";
 import {
@@ -45,6 +46,8 @@ import {
   activityKindOf,
   changeLine,
   feedItems,
+  fmtIsraelDay,
+  fmtIsraelTime,
   staffCan,
   type ProgrammeEvent,
   type ProgrammeGroup,
@@ -145,7 +148,9 @@ function StaffScreen() {
                 <Card className="border-primary/40">
                   <div className="flex items-center gap-2">
                     {now ? <Radio className="size-4 shrink-0 animate-pulse text-primary" /> : null}
-                    <span className="text-[13px] font-bold text-primary">{fmtTime(focus.startsAt)}</span>
+                    <span className="text-[13px] font-bold text-primary">
+                      {fmtIsraelTime(focus.startsAt)}
+                    </span>
                     <StatusChip status={focus.status} />
                     <Freshness event={focus} />
                   </div>
@@ -188,7 +193,7 @@ function StaffScreen() {
                 <button key={e.id} type="button" onClick={() => setOps(e)} className="tap block w-full text-left">
                   <Card className="border-notice-border bg-notice-soft">
                     <div className="flex items-center gap-2">
-                      <span className="text-[12.5px] font-bold">{fmtTime(e.startsAt)}</span>
+                      <span className="text-[12.5px] font-bold">{fmtIsraelTime(e.startsAt)}</span>
                       <StatusChip status={e.status} />
                     </div>
                     <p className="mt-1 text-[13.5px] font-semibold">{e.title}</p>
@@ -210,7 +215,9 @@ function StaffScreen() {
                 <button key={e.id} type="button" onClick={() => setOps(e)} className="tap block w-full text-left">
                   <Card>
                     <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-bold text-primary">{fmtTime(e.startsAt)}</span>
+                      <span className="text-[13px] font-bold text-primary">
+                        {fmtIsraelTime(e.startsAt)}
+                      </span>
                       <StatusChip status={e.status} />
                       <Freshness event={e} />
                     </div>
@@ -266,7 +273,7 @@ function StaffScreen() {
                 <Card>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[12px] font-bold text-muted-foreground">
-                      {fmtDay(e.startsAt)} {fmtTime(e.startsAt)}
+                      {fmtIsraelDay(e.startsAt)} {fmtIsraelTime(e.startsAt)}
                     </span>
                     <StatusChip status={e.status} />
                     <StatusPill tone={e.mandatory ? "attention" : "quiet"}>

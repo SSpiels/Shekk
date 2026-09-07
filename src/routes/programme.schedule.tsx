@@ -4,8 +4,7 @@ import { CalendarClock } from "lucide-react";
 import { EmptyState, SectionHead } from "@/components/Kit";
 import { useProgrammeHub } from "@/lib/useProgrammeHub";
 import { EventRow, EventSheet } from "@/components/programme/Participant";
-import { fmtDayLong } from "@/components/programme/Bits";
-import type { ProgrammeEvent } from "@/lib/programme/logic";
+import { fmtIsraelDayLong, israelDateKey, type ProgrammeEvent } from "@/lib/programme/logic";
 
 export const Route = createFileRoute("/programme/schedule")({
   head: () => ({
@@ -34,7 +33,10 @@ function ScheduleScreen() {
     const rows = hub.events.filter((e) => (past ? true : new Date(e.startsAt).getTime() >= cutoff));
     const map = new Map<string, ProgrammeEvent[]>();
     for (const e of [...rows].sort((a, b) => a.startsAt.localeCompare(b.startsAt))) {
-      const key = new Date(e.startsAt).toDateString();
+      // Israel-local day, not the viewer's own — a 23:45 Israel event and a
+      // 00:15-the-next-day Israel event must land in different day sections
+      // even for a viewer whose own browser day hasn't rolled over yet.
+      const key = israelDateKey(e.startsAt);
       map.set(key, [...(map.get(key) ?? []), e]);
     }
     return [...map.entries()];
@@ -59,7 +61,7 @@ function ScheduleScreen() {
       ) : (
         days.map(([day, events]) => (
           <section key={day}>
-            <SectionHead title={fmtDayLong(events[0]!.startsAt)} />
+            <SectionHead title={fmtIsraelDayLong(events[0]!.startsAt)} />
             <div className="space-y-2">
               {events.map((e) => (
                 <EventRow key={e.id} event={e} onOpen={() => setOpen(e)} />

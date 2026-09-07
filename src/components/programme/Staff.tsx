@@ -17,10 +17,10 @@ import {
   Field,
   Sheet,
   Toggle,
-  fmtTime,
+  // Vote closing times use Bits' generic (viewer-local) fromLocalInput —
+  // votes aren't tied to Israel wall-clock time the way events are.
   fromLocalInput,
   inputClass,
-  toLocalInput,
 } from "@/components/programme/Bits";
 import { cleanError, useStaffActions } from "@/lib/useProgrammeHub";
 import {
@@ -32,6 +32,13 @@ import {
   activityKindOf,
   delayBy,
   everyone,
+  // Event start/end times are Israel wall-clock time, entered and shown the
+  // same way regardless of the staff member's own browser timezone — a
+  // madrich booking a bus for "18:00" while still at home in the US means
+  // 18:00 in Israel, not 18:00 where they're standing.
+  fmtIsraelTime,
+  isoToIsraelLocalInput,
+  israelLocalInputToIso,
   type ActivityKind,
   type Audience,
   type ProgrammeEvent,
@@ -57,8 +64,10 @@ export function EventEditor({
   const { createEvent, updateEvent, deleteEvent } = useStaffActions();
   const [title, setTitle] = useState(event?.title ?? "");
   const [description, setDescription] = useState(event?.description ?? "");
-  const [startsAt, setStartsAt] = useState(toLocalInput(event?.startsAt ?? new Date().toISOString()));
-  const [endsAt, setEndsAt] = useState(event?.endsAt ? toLocalInput(event.endsAt) : "");
+  const [startsAt, setStartsAt] = useState(
+    isoToIsraelLocalInput(event?.startsAt ?? new Date().toISOString()),
+  );
+  const [endsAt, setEndsAt] = useState(event?.endsAt ? isoToIsraelLocalInput(event.endsAt) : "");
   const [locationLabel, setLocationLabel] = useState(event?.locationLabel ?? "");
   const [meetingPoint, setMeetingPoint] = useState(event?.meetingPoint ?? "");
   const [onlineUrl, setOnlineUrl] = useState(event?.onlineUrl ?? "");
@@ -77,8 +86,8 @@ export function EventEditor({
   const fields = {
     title: title.trim(),
     description: description.trim() || null,
-    startsAt: startsAt ? fromLocalInput(startsAt) : new Date().toISOString(),
-    endsAt: endsAt ? fromLocalInput(endsAt) : null,
+    startsAt: startsAt ? israelLocalInputToIso(startsAt) : new Date().toISOString(),
+    endsAt: endsAt ? israelLocalInputToIso(endsAt) : null,
     locationLabel: locationLabel.trim() || null,
     meetingPoint: meetingPoint.trim() || null,
     onlineUrl: onlineUrl.trim() || null,
@@ -130,7 +139,7 @@ export function EventEditor({
         </Field>
 
         <div className="grid grid-cols-2 gap-2">
-          <Field label="Starts">
+          <Field label="Starts" hint="Israel time, wherever you are">
             <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={inputClass} />
           </Field>
           <Field label="Ends (optional)">
@@ -276,7 +285,7 @@ export function EventOpsSheet({ event, onClose }: { event: ProgrammeEvent; onClo
     <Sheet open onClose={onClose} title={event.title}>
       <div className="space-y-3">
         <p className="text-[13px] text-muted-foreground">
-          Starts {fmtTime(event.startsAt)}
+          Starts {fmtIsraelTime(event.startsAt)}
           {event.locationLabel ? ` · ${event.locationLabel}` : ""}
         </p>
 

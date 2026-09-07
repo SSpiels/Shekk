@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { CalendarDays, Compass, PlaneTakeoff, ShieldCheck, Smartphone, Check, PartyPopper } from "lucide-react";
 import { useProgramme, useTravel } from "@/lib/useProgramme";
 import { useProgrammeHub } from "@/lib/useProgrammeHub";
-import { fmtDay, fmtTime } from "@/components/programme/Bits";
+import { fmtIsraelDay, fmtIsraelTime } from "@/lib/programme/logic";
 
 
 import { AppShell } from "@/components/AppShell";
@@ -221,11 +221,11 @@ function ProgrammePanel() {
 
   let when: string;
   if (hubFocus) {
-    when = `${hub.now ? "Happening now" : fmtDay(hubFocus.startsAt)} · ${fmtTime(hubFocus.startsAt)}${
+    when = `${hub.now ? "Happening now" : fmtIsraelDay(hubFocus.startsAt)} · ${fmtIsraelTime(hubFocus.startsAt)}${
       hubFocus.locationLabel ? ` · ${hubFocus.locationLabel}` : ""
     }`;
   } else if (nextItem) {
-    when = `${fmtDay(nextItem.startsAt)} · ${fmtTime(nextItem.startsAt)}`;
+    when = `${fmtIsraelDay(nextItem.startsAt)} · ${fmtIsraelTime(nextItem.startsAt)}`;
   } else if (checklistTotal > 0) {
     when = `Checklist ${checklistDone} of ${checklistTotal} done`;
   } else {

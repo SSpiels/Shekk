@@ -6,8 +6,14 @@ import { EmptyState, Milestone, ProgressBar, SectionHead } from "@/components/Ki
 import { track } from "@/lib/analytics";
 import { useParticipantActions, useProgrammeHub } from "@/lib/useProgrammeHub";
 import { AnnouncementCard, EventRow, EventSheet, VoteCard } from "@/components/programme/Participant";
-import { Freshness, StatusChip, TapRow, fmtDayLong, fmtTime } from "@/components/programme/Bits";
-import { changeLine, pendingActions, type ProgrammeEvent } from "@/lib/programme/logic";
+import { Freshness, StatusChip, TapRow } from "@/components/programme/Bits";
+import {
+  changeLine,
+  fmtIsraelDayLong,
+  fmtIsraelTime,
+  pendingActions,
+  type ProgrammeEvent,
+} from "@/lib/programme/logic";
 
 export const Route = createFileRoute("/programme/")({
   head: () => ({
@@ -61,8 +67,8 @@ function TodayScreen() {
               </div>
               <p className="mt-2 font-display text-lg font-bold leading-tight">{focus.title}</p>
               <p className="mt-1 text-sm font-semibold text-primary">
-                {fmtTime(focus.startsAt)}
-                {focus.endsAt ? ` – ${fmtTime(focus.endsAt)}` : ""}
+                {fmtIsraelTime(focus.startsAt)}
+                {focus.endsAt ? ` – ${fmtIsraelTime(focus.endsAt)}` : ""}
               </p>
               {focus.locationLabel ? (
                 <p className="mt-0.5 text-xs text-muted-foreground">{focus.locationLabel}</p>
@@ -160,7 +166,7 @@ function TodayScreen() {
 
       <section>
         <SectionHead
-          title={`Today · ${fmtDayLong(new Date().toISOString())}`}
+          title={`Today · ${fmtIsraelDayLong(new Date().toISOString())}`}
           action={
             <Link to="/programme/schedule" className="text-[12px] font-bold text-primary">
               All days →

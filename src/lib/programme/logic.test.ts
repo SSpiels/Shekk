@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   announcementAcknowledgementStats,
   audienceAllows,
   audienceLabel,
+  changeLine,
   checklistProgress,
   delayBy,
   emptyHub,
@@ -217,12 +218,24 @@ describe("live schedule", () => {
     expect(nextEvent([ev({ status: "cancelled", startsAt: "2026-08-24T12:00:00.000Z" })], at)).toBeNull();
   });
 
-  it("groups today's events by local day and sorts them", () => {
+  it("groups today's events by Israel day and sorts them", () => {
     const ref = new Date("2026-08-24T09:00:00.000Z");
     const today = ev({ id: "b", startsAt: "2026-08-24T15:00:00.000Z" });
     const alsoToday = ev({ id: "a", startsAt: "2026-08-24T07:00:00.000Z" });
     const tomorrow = ev({ id: "c", startsAt: "2026-08-27T07:00:00.000Z" });
     expect(todaysEvents([today, alsoToday, tomorrow], ref).map((e) => e.id)).toEqual(["a", "b"]);
+  });
+
+  it("counts an event as 'today' by the Israel calendar day, not the UTC one", () => {
+    // 22:00 UTC on 24 Aug is 01:00 on 25 Aug in Israel (summer, UTC+3) — a
+    // naive UTC or browser-local .toDateString() comparison would wrongly
+    // call this "the 24th".
+    const ref = new Date("2026-08-25T06:00:00.000Z"); // 09:00 Israel, 25 Aug
+    const justAfterIsraelMidnight = ev({ id: "a", startsAt: "2026-08-24T22:00:00.000Z" });
+    const stillThe24thInIsrael = ev({ id: "b", startsAt: "2026-08-24T20:00:00.000Z" });
+    expect(
+      todaysEvents([justAfterIsraelMidnight, stillThe24thInIsrael], ref).map((e) => e.id),
+    ).toEqual(["a"]);
   });
 
   it("tones statuses so changes read as attention", () => {
@@ -846,5 +859,114 @@ describe("Israel time helpers", () => {
     const local = isoToIsraelLocalInput(iso);
     expect(local).toBe("2026-09-10T18:00");
     expect(israelLocalInputToIso(local)).toBe(iso);
+  });
+});
+
+/**
+ * The whole point of the Israel-time helpers: a student or staff member
+ * viewing from London, New York or Israel itself must all see the same
+ * intended Israel time for the same event. process.env.TZ genuinely changes
+ * what Date's un-timezoned local getters/formatters return in this Node
+ * runtime (verified empirically), so switching it here is a faithful stand-in
+ * for "a viewer whose browser is set to a different timezone" — anything
+ * that reads correctly across all three has no dependency on the viewer's
+ * own clock.
+ */
+describe("Israel time is independent of the viewer's own timezone", () => {
+  const originalTZ = process.env.TZ;
+  afterEach(() => {
+    if (originalTZ === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTZ;
+  });
+
+  const summerInstant = "2026-09-10T15:00:00.000Z"; // 18:00 in Israel
+  const viewers = ["Europe/London", "America/New_York", "Asia/Jerusalem"];
+
+  it.each(viewers)("fmtIsraelTime reads 18:00 for a %s viewer", (tz) => {
+    process.env.TZ = tz;
+    expect(fmtIsraelTime(summerInstant)).toBe("18:00");
+  });
+
+  it.each(viewers)("israelDateKey agrees on the Israel calendar day for a %s viewer", (tz) => {
+    process.env.TZ = tz;
+    expect(israelDateKey(summerInstant)).toBe("2026-09-10");
+  });
+
+  it.each(viewers)(
+    "isoToIsraelLocalInput shows the same Israel wall-clock for a %s viewer",
+    (tz) => {
+      process.env.TZ = tz;
+      expect(isoToIsraelLocalInput(summerInstant)).toBe("2026-09-10T18:00");
+    },
+  );
+
+  it.each(viewers)(
+    "israelLocalInputToIso resolves '18:00 Israel time' to the same instant for a %s staff member",
+    (tz) => {
+      process.env.TZ = tz;
+      expect(israelLocalInputToIso("2026-09-10T18:00")).toBe(summerInstant);
+    },
+  );
+
+  it("demonstrates the bug this replaces: un-timezoned formatting DOES vary by viewer", () => {
+    const naiveFormat = (iso: string) =>
+      new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+    process.env.TZ = "Europe/London";
+    const london = naiveFormat(summerInstant);
+    process.env.TZ = "Asia/Jerusalem";
+    const israel = naiveFormat(summerInstant);
+    expect(london).not.toBe(israel); // the exact inconsistency being fixed
+    expect(israel).toBe("18:00"); // Israel's own clock is still the correct answer
+  });
+});
+
+describe("changeLine", () => {
+  const originalTZ = process.env.TZ;
+  afterEach(() => {
+    if (originalTZ === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTZ;
+  });
+
+  it("describes a same-Israel-day delay by Israel clock time, for any viewer", () => {
+    for (const tz of ["Europe/London", "America/New_York", "Asia/Jerusalem"]) {
+      process.env.TZ = tz;
+      const line = changeLine({
+        field: "starts_at",
+        before: "2026-09-10T15:00:00.000Z", // 18:00 Israel
+        after: "2026-09-10T15:30:00.000Z", // 18:30 Israel
+      });
+      expect(line).toBe("Delayed 30 minutes · 18:00 → 18:30");
+    }
+  });
+
+  it("treats a delay across Israel midnight as moving to a new day, even though the UTC date is unchanged", () => {
+    // 23:45 Israel -> 00:15 Israel next day is a 30-minute delay that LOOKS
+    // same-UTC-day (both instants are still "10 Sept" in UTC) but is a
+    // different Israel calendar day — exactly the case a UTC or browser-local
+    // .toDateString() comparison gets wrong.
+    const line = changeLine({
+      field: "starts_at",
+      before: "2026-09-10T20:45:00.000Z", // 23:45 Israel, 10 Sept
+      after: "2026-09-10T21:15:00.000Z", // 00:15 Israel, 11 Sept
+    });
+    expect(line).toContain("Moved to");
+    expect(line).toContain("11 Sept");
+  });
+
+  it("says 'isToday' by the Israel calendar day, not the viewer's own", () => {
+    // now = 09:00 Israel on 11 Sept; after = 00:15 Israel on 11 Sept — same
+    // Israel day, so it should read as a bare time, not a full date.
+    const nowIsraelMorning = new Date("2026-09-11T06:00:00.000Z");
+    vi.useFakeTimers().setSystemTime(nowIsraelMorning);
+    try {
+      const line = changeLine({
+        field: "starts_at",
+        before: null,
+        after: "2026-09-10T21:15:00.000Z",
+      });
+      expect(line).toBe("Time changed: 00:15");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
