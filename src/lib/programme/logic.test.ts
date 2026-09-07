@@ -7,12 +7,17 @@ import {
   delayBy,
   emptyHub,
   eventFullForGoing,
+  eventResponseBreakdown,
   everyone,
   filterForViewer,
+  fmtIsraelTime,
   countOnboardingStatuses,
   filterOnboardingStudents,
   filterStaffStudents,
   importantChanges,
+  isoToIsraelLocalInput,
+  israelDateKey,
+  israelLocalInputToIso,
   nextEvent,
   nowEvent,
   onboardingComplete,
@@ -757,5 +762,89 @@ describe("announcementAcknowledgementStats", () => {
     ];
     const stats = announcementAcknowledgementStats(everyone, members, []);
     expect(stats.outstanding.map((s) => s.displayName)).toEqual(["Amit", "Zara"]);
+  });
+});
+
+describe("eventResponseBreakdown", () => {
+  const member = (over: Partial<CommunicationsMember> = {}): CommunicationsMember => ({
+    userId: "u1",
+    displayName: "Rachel Cohen",
+    handle: "rachel",
+    groupIds: [],
+    ...over,
+  });
+
+  it("splits eligible members into going/maybe/not-going/no-response", () => {
+    const members = [
+      member({ userId: "a", displayName: "Ann" }),
+      member({ userId: "b", displayName: "Ben" }),
+      member({ userId: "c", displayName: "Cara" }),
+      member({ userId: "d", displayName: "Dan" }),
+    ];
+    const responses = new Map<string, "going" | "maybe" | "not_going">([
+      ["a", "going"],
+      ["b", "maybe"],
+      ["c", "not_going"],
+      // d: no row at all
+    ]);
+    const b = eventResponseBreakdown(everyone, members, responses);
+    expect(b.eligibleCount).toBe(4);
+    expect(b.going.map((s) => s.userId)).toEqual(["a"]);
+    expect(b.maybe.map((s) => s.userId)).toEqual(["b"]);
+    expect(b.notGoing.map((s) => s.userId)).toEqual(["c"]);
+    expect(b.noResponse.map((s) => s.userId)).toEqual(["d"]);
+  });
+
+  it("scopes the denominator to the eligible audience, not the whole cohort", () => {
+    const members = [
+      member({ userId: "a", displayName: "Ann", groupIds: ["bus1"] }),
+      member({ userId: "b", displayName: "Ben", groupIds: ["bus2"] }),
+    ];
+    const audience: Audience = { kind: "groups", groupIds: ["bus1"], userIds: [] };
+    const b = eventResponseBreakdown(audience, members, new Map());
+    expect(b.eligibleCount).toBe(1);
+    expect(b.noResponseCount).toBe(1);
+  });
+
+  it("a response from someone no longer eligible is not counted", () => {
+    const members = [member({ userId: "a", displayName: "Ann", groupIds: ["bus1"] })];
+    const audience: Audience = { kind: "groups", groupIds: ["bus1"], userIds: [] };
+    const responses = new Map<string, "going" | "maybe" | "not_going">([
+      ["a", "going"],
+      ["ghost", "going"],
+    ]);
+    const b = eventResponseBreakdown(audience, members, responses);
+    expect(b.eligibleCount).toBe(1);
+    expect(b.goingCount).toBe(1);
+  });
+});
+
+describe("Israel time helpers", () => {
+  it("fmtIsraelTime reads Israel time regardless of the instant's UTC hour", () => {
+    // 15:00 UTC in July is 18:00 in Israel (summer, UTC+3).
+    expect(fmtIsraelTime("2026-07-15T15:00:00Z")).toBe("18:00");
+    // 12:00 UTC in January is 14:00 in Israel (winter, UTC+2).
+    expect(fmtIsraelTime("2026-01-15T12:00:00Z")).toBe("14:00");
+  });
+
+  it("israelDateKey reflects the Israel-local date even near a UTC day boundary", () => {
+    // 22:30 Israel time (summer) on 10 Sept is 19:30 UTC the same day.
+    expect(israelDateKey("2026-09-10T19:30:00Z")).toBe("2026-09-10");
+    // 01:00 Israel time on 11 Sept is 22:00 UTC on the 10th — still "the 11th" in Israel.
+    expect(israelDateKey("2026-09-10T22:00:00Z")).toBe("2026-09-11");
+  });
+
+  it("israelLocalInputToIso treats the input as Israel wall-clock time, not the runner's local time", () => {
+    // "18:00 in Israel" on a summer date is 15:00 UTC (UTC+3).
+    expect(israelLocalInputToIso("2026-07-15T18:00")).toBe("2026-07-15T15:00:00.000Z");
+    // "18:00 in Israel" on a winter date is 16:00 UTC (UTC+2).
+    expect(israelLocalInputToIso("2026-01-15T18:00")).toBe("2026-01-15T16:00:00.000Z");
+  });
+
+  it("isoToIsraelLocalInput and israelLocalInputToIso round-trip", () => {
+    const iso = "2026-09-10T15:00:00.000Z";
+    const local = isoToIsraelLocalInput(iso);
+    expect(local).toBe("2026-09-10T18:00");
+    expect(israelLocalInputToIso(local)).toBe(iso);
   });
 });

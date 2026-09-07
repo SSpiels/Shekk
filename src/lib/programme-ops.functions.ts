@@ -368,6 +368,24 @@ export const staffAnnouncementAcknowledgements = createServerFn({ method: "POST"
     return detail(context.supabase, context.userId, data.cohortId, data.announcementId);
   });
 
+/* ─────────────────────────── Programme OS: Calendar ────────────────────────── */
+
+export const staffCalendarOverview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ cohortId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffCalendarOverview: overview } = await import("@/lib/programme-ops.server");
+    return overview(context.supabase, context.userId, data.cohortId);
+  });
+
+export const staffEventResponses = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ cohortId: uuid, eventId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffEventResponses: responses } = await import("@/lib/programme-ops.server");
+    return responses(context.supabase, context.userId, data.cohortId, data.eventId);
+  });
+
 /* ─────────────────────────────────── Staff: votes ─────────────────────────── */
 
 export const staffCreateVote = createServerFn({ method: "POST" })

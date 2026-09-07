@@ -1019,6 +1019,245 @@ export const DEFAULT_CHECKLIST: {
   },
 ];
 
+/* ─────────────────────── Calendar (Programme OS staff view) ──────────────────────
+ * Built directly on the existing event/audience/RSVP/change engine
+ * (ProgrammeEvent, Audience, programme_event_rsvps, programme_event_changes)
+ * — the one thing that didn't already exist is the staff-side response
+ * rollup: of an event's actual eligible audience, who's going/maybe/not
+ * going/hasn't responded, kept pure and mirroring
+ * announcementAcknowledgementStats' shape exactly. */
+
+export type StaffCalendarEvent = {
+  id: string;
+  title: string;
+  description: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  originalStartsAt: string | null;
+  locationLabel: string | null;
+  meetingPoint: string | null;
+  onlineUrl: string | null;
+  eventType: string;
+  mandatory: boolean;
+  status: EventStatus;
+  statusNote: string | null;
+  audience: Audience;
+  rsvpEnabled: boolean;
+  capacity: number | null;
+  requiresAck: boolean;
+  urgent: boolean;
+  changes: EventChange[];
+  eligibleCount: number;
+  goingCount: number;
+  maybeCount: number;
+  notGoingCount: number;
+  noResponseCount: number;
+  /** Staff preview only — who acknowledged, by name, is Communications' job. */
+  ackCount: number;
+};
+
+export type StaffCalendarOverview = {
+  cohortId: string;
+  totalStudents: number;
+  events: StaffCalendarEvent[];
+};
+
+export type StaffEventResponses = {
+  eventId: string;
+  eligibleCount: number;
+  capacity: number | null;
+  going: StaffAnnouncementStudentRef[];
+  maybe: StaffAnnouncementStudentRef[];
+  notGoing: StaffAnnouncementStudentRef[];
+  noResponse: StaffAnnouncementStudentRef[];
+};
+
+/**
+ * Given an event's audience and the cohort roster, split eligible members
+ * into going/maybe/not-going/no-response. "No response" is an eligible
+ * member with no programme_event_rsvps row at all — never confused with
+ * "not going", and never counted for someone the event wasn't even aimed at.
+ */
+export function eventResponseBreakdown(
+  audience: Audience,
+  members: CommunicationsMember[],
+  responses: Map<string, RsvpResponse> | Record<string, RsvpResponse>,
+): {
+  eligibleCount: number;
+  goingCount: number;
+  maybeCount: number;
+  notGoingCount: number;
+  noResponseCount: number;
+  going: StaffAnnouncementStudentRef[];
+  maybe: StaffAnnouncementStudentRef[];
+  notGoing: StaffAnnouncementStudentRef[];
+  noResponse: StaffAnnouncementStudentRef[];
+} {
+  const responseFor = (userId: string): RsvpResponse | undefined =>
+    responses instanceof Map ? responses.get(userId) : responses[userId];
+  const eligible = members.filter((m) => audienceAllows(audience, m));
+  const ref = (m: CommunicationsMember): StaffAnnouncementStudentRef => ({
+    userId: m.userId,
+    displayName: m.displayName,
+    handle: m.handle,
+  });
+  const byName = (a: StaffAnnouncementStudentRef, b: StaffAnnouncementStudentRef) =>
+    a.displayName.localeCompare(b.displayName);
+
+  const going = eligible
+    .filter((m) => responseFor(m.userId) === "going")
+    .map(ref)
+    .sort(byName);
+  const maybe = eligible
+    .filter((m) => responseFor(m.userId) === "maybe")
+    .map(ref)
+    .sort(byName);
+  const notGoing = eligible
+    .filter((m) => responseFor(m.userId) === "not_going")
+    .map(ref)
+    .sort(byName);
+  const noResponse = eligible
+    .filter((m) => responseFor(m.userId) === undefined)
+    .map(ref)
+    .sort(byName);
+
+  return {
+    eligibleCount: eligible.length,
+    goingCount: going.length,
+    maybeCount: maybe.length,
+    notGoingCount: notGoing.length,
+    noResponseCount: noResponse.length,
+    going,
+    maybe,
+    notGoing,
+    noResponse,
+  };
+}
+
+/* ───────────────────────── Israel time (explicit, DST-safe) ─────────────────────
+ * Programme events happen in Israel; staff and students may be viewing from
+ * anywhere before they fly. Every existing date helper (fmtTime/fmtDay in
+ * components/programme/Bits.tsx, the datetime-local round-trip the mobile
+ * EventEditor uses) reads/writes in the VIEWER's browser-local timezone, not
+ * explicitly Israel time — correct only by coincidence when the viewer
+ * happens to already be on Israel time. That's a real, pre-existing gap
+ * (flagged, not fixed here — fixing it touches the mobile editor and is out
+ * of scope for Calendar). The functions below are the explicit, DST-safe
+ * alternative, used only by the new desktop Calendar: they always format
+ * against — and always parse wall-clock input as — Asia/Jerusalem,
+ * regardless of the viewer's own timezone. */
+
+export const ISRAEL_TIMEZONE = "Asia/Jerusalem";
+
+/** Asia/Jerusalem's UTC offset, in minutes, at a given instant — positive east of UTC. */
+function israelOffsetMinutesAt(utcMs: number): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: ISRAEL_TIMEZONE,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })
+      .formatToParts(new Date(utcMs))
+      .map((p) => [p.type, p.value]),
+  );
+  const asIfUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    Number(parts.hour),
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  return Math.round((asIfUtc - utcMs) / 60_000);
+}
+
+/** A UTC instant, formatted as it reads on a clock in Israel — e.g. "18:00". */
+export function fmtIsraelTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: ISRAEL_TIMEZONE,
+  });
+}
+
+/** e.g. "Wed 10 Sep". */
+export function fmtIsraelDay(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: ISRAEL_TIMEZONE,
+  });
+}
+
+/** e.g. "Wednesday 10 September". */
+export function fmtIsraelDayLong(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-GB", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: ISRAEL_TIMEZONE,
+  });
+}
+
+/** "2026-09-10" as the date reads on a clock in Israel — a stable grouping/grid key. */
+export function israelDateKey(iso: string): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: ISRAEL_TIMEZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    })
+      .formatToParts(new Date(iso))
+      .map((p) => [p.type, p.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+/** A UTC instant → the "YYYY-MM-DDTHH:mm" an Israel wall clock shows — feeds a datetime-local input. */
+export function isoToIsraelLocalInput(iso: string): string {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: ISRAEL_TIMEZONE,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+      .formatToParts(new Date(iso))
+      .map((p) => [p.type, p.value]),
+  );
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
+}
+
+/**
+ * A datetime-local value TYPED AS ISRAEL WALL-CLOCK TIME (e.g. "2026-09-10T18:00"
+ * meaning 6pm in Israel, regardless of what timezone the browser is in) → the
+ * correct UTC instant. Two-pass fixed point on the offset: stable for every real
+ * instant except the ~1-hour skipped/repeated window at the exact DST changeover,
+ * which is an accepted, documented limitation (programme events aren't scheduled
+ * at 2am on a DST-transition night).
+ */
+export function israelLocalInputToIso(value: string): string {
+  const [datePart, timePart] = value.split("T");
+  const [y, m, d] = datePart!.split("-").map(Number);
+  const [hh, mm] = (timePart ?? "00:00").split(":").map(Number);
+  const wallAsUtcMs = Date.UTC(y!, m! - 1, d!, hh, mm, 0);
+  let candidate = wallAsUtcMs;
+  for (let i = 0; i < 2; i++) {
+    candidate = wallAsUtcMs - israelOffsetMinutesAt(candidate) * 60_000;
+  }
+  return new Date(candidate).toISOString();
+}
+
 /* ─────────────────────────── V2: one feed, one to-do list ─────────────────── */
 
 /**

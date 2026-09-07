@@ -25,6 +25,7 @@ import {
   type ChecklistItem,
   type EventChange,
   type EventStatus,
+  eventResponseBreakdown,
   type NotifyLevel,
   onboardingStatus,
   onboardingItemStats,
@@ -40,10 +41,14 @@ import {
   type ProgrammeNotification,
   type ProgrammePlace,
   type ProgrammeVote,
+  type RsvpResponse,
   type StaffAnnouncementAcknowledgements,
   type StaffAnnouncementSummary,
+  type StaffCalendarEvent,
+  type StaffCalendarOverview,
   type StaffCommunicationsOverview,
   type StaffContext,
+  type StaffEventResponses,
   type StaffOnboardingOverview,
   type StaffOnboardingStudent,
   type StaffOverviewAnnouncement,
@@ -1810,6 +1815,167 @@ export async function staffAnnouncementAcknowledgements(
   const stats = announcementAcknowledgementStats(audience, members, acked);
 
   return { announcementId, ...stats };
+}
+
+/* ───────────────────────────── Programme OS: Calendar ──────────────────────── */
+
+/**
+ * Every event in the cohort, each with a response rollup scoped to its
+ * *actual eligible audience* — same principle as Communications' ack rollup.
+ * Read access is gated on `events`, the same permission that gates
+ * creating/updating/deleting them; who specifically went/didn't (by name) is
+ * a separate, narrower read via staffEventResponses below.
+ */
+export async function staffCalendarOverview(
+  db: Db,
+  userId: string,
+  cohortId: string,
+): Promise<StaffCalendarOverview> {
+  await requireStaff(db, userId, cohortId, "events");
+  const service = await adminDb();
+
+  const [raw, audiences, eventRes, ackRes, changeRes] = await Promise.all([
+    loadCohortRosterRaw(service, cohortId),
+    loadAudiences(service, cohortId),
+    service.from("programme_events").select("*").eq("cohort_id", cohortId).order("starts_at"),
+    service
+      .from("programme_acknowledgements")
+      .select("subject_id, user_id")
+      .eq("cohort_id", cohortId)
+      .eq("subject_type", "event"),
+    service
+      .from("programme_event_changes")
+      .select("*")
+      .eq("cohort_id", cohortId)
+      .order("changed_at", { ascending: false }),
+  ]);
+
+  const eventIds = ((eventRes.data ?? []) as Row[]).map((e) => String(e["id"]));
+  const { data: rsvpRows } = eventIds.length
+    ? await service
+        .from("programme_event_rsvps")
+        .select("event_id, user_id, response")
+        .in("event_id", eventIds)
+    : { data: [] as Row[] };
+
+  const members = rosterMembers(raw);
+
+  const rsvpsByEvent = new Map<string, Map<string, RsvpResponse>>();
+  for (const r of (rsvpRows ?? []) as Row[]) {
+    const key = String(r["event_id"]);
+    const map = rsvpsByEvent.get(key) ?? new Map<string, RsvpResponse>();
+    map.set(String(r["user_id"]), String(r["response"]) as RsvpResponse);
+    rsvpsByEvent.set(key, map);
+  }
+
+  const ackCountByEvent = new Map<string, number>();
+  for (const a of (ackRes.data ?? []) as Row[]) {
+    const key = String(a["subject_id"]);
+    ackCountByEvent.set(key, (ackCountByEvent.get(key) ?? 0) + 1);
+  }
+
+  const changesByEvent = new Map<string, EventChange[]>();
+  for (const c of (changeRes.data ?? []) as Row[]) {
+    const key = String(c["event_id"]);
+    const list = changesByEvent.get(key) ?? [];
+    list.push({
+      id: String(c["id"]),
+      field: String(c["field"]),
+      before: s(c, "before_value"),
+      after: s(c, "after_value"),
+      note: s(c, "note"),
+      notifyLevel: String(c["notify_level"]) as NotifyLevel,
+      changedAt: String(c["changed_at"]),
+    });
+    changesByEvent.set(key, list);
+  }
+
+  const events: StaffCalendarEvent[] = ((eventRes.data ?? []) as Row[]).map((e) => {
+    const id = String(e["id"]);
+    const audience = audienceFor(audiences, "event", id, s(e, "audience_kind"));
+    const breakdown = eventResponseBreakdown(audience, members, rsvpsByEvent.get(id) ?? new Map());
+    return {
+      id,
+      title: String(e["title"]),
+      description: s(e, "description"),
+      startsAt: String(e["starts_at"]),
+      endsAt: s(e, "ends_at"),
+      originalStartsAt: s(e, "original_starts_at"),
+      locationLabel: s(e, "location_label"),
+      meetingPoint: s(e, "meeting_point"),
+      onlineUrl: s(e, "online_url"),
+      eventType: String(e["event_type"] ?? "activity"),
+      mandatory: Boolean(e["mandatory"]),
+      status: String(e["status"]) as EventStatus,
+      statusNote: s(e, "status_note"),
+      audience,
+      rsvpEnabled: Boolean(e["rsvp_enabled"]),
+      capacity: n(e, "capacity"),
+      requiresAck: Boolean(e["requires_ack"]),
+      urgent: Boolean(e["urgent"]),
+      changes: changesByEvent.get(id) ?? [],
+      eligibleCount: breakdown.eligibleCount,
+      goingCount: breakdown.goingCount,
+      maybeCount: breakdown.maybeCount,
+      notGoingCount: breakdown.notGoingCount,
+      noResponseCount: breakdown.noResponseCount,
+      ackCount: ackCountByEvent.get(id) ?? 0,
+    };
+  });
+
+  return { cohortId, totalStudents: members.length, events };
+}
+
+/**
+ * One event's RSVP drill-down: eligible/going/maybe/not-going/no-response,
+ * each by name, for staff to act on. Gated on `events` — the same
+ * permission as managing the event itself, since RSVP response is core
+ * event-operations data (unlike Communications' acknowledgement identity,
+ * which sits behind the narrower `acknowledgements` permission).
+ *
+ * Never trusts the caller's claim that eventId belongs to cohortId; the row
+ * is re-read and its own cohort_id checked, same defensive pattern as
+ * staffStudentProfile / staffAnnouncementAcknowledgements.
+ */
+export async function staffEventResponses(
+  db: Db,
+  userId: string,
+  cohortId: string,
+  eventId: string,
+): Promise<StaffEventResponses | null> {
+  await requireStaff(db, userId, cohortId, "events");
+  const service = await adminDb();
+
+  const { data: eventRow } = await service
+    .from("programme_events")
+    .select("id, audience_kind, capacity, cohort_id")
+    .eq("id", eventId)
+    .maybeSingle();
+  if (!eventRow || String((eventRow as Row)["cohort_id"]) !== cohortId) return null;
+
+  const [raw, audiences, rsvpRes] = await Promise.all([
+    loadCohortRosterRaw(service, cohortId),
+    loadAudiences(service, cohortId),
+    service.from("programme_event_rsvps").select("user_id, response").eq("event_id", eventId),
+  ]);
+
+  const audience = audienceFor(audiences, "event", eventId, s(eventRow as Row, "audience_kind"));
+  const members = rosterMembers(raw);
+  const responses = new Map<string, RsvpResponse>();
+  for (const r of (rsvpRes.data ?? []) as Row[]) {
+    responses.set(String(r["user_id"]), String(r["response"]) as RsvpResponse);
+  }
+  const breakdown = eventResponseBreakdown(audience, members, responses);
+
+  return {
+    eventId,
+    eligibleCount: breakdown.eligibleCount,
+    capacity: n(eventRow as Row, "capacity"),
+    going: breakdown.going,
+    maybe: breakdown.maybe,
+    notGoing: breakdown.notGoing,
+    noResponse: breakdown.noResponse,
+  };
 }
 
 /**
