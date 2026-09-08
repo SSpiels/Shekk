@@ -1,3 +1,4 @@
+import { fmtDateOnly } from "@/lib/programme/logic";
 /**
  * One student's staff-facing profile. Two tabs for V1: Overview (programme-
  * safe info that actually exists) and Onboarding (the same checklist engine
@@ -109,7 +110,7 @@ function OnboardingTab({
             ) : null}
             <p className="mt-1 text-[11px] text-muted-foreground">
               {item.required ? "Required" : "Optional"}
-              {item.dueOn ? ` · due ${fmtDate(item.dueOn)}` : ""}
+              {item.dueOn ? ` · due ${fmtDateOnly(item.dueOn)}` : ""}
             </p>
           </div>
         </Card>

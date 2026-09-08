@@ -1,7 +1,7 @@
 # Current state
 
-**Last audited:** 2026-09-07
-**Branch/commit audited:** `feature/programme-os-v1` @ `7693ca2` ("Programme OS V1 phase 6: staff Overview landing page")
+**Last audited:** 2026-09-08
+**Branch audited:** `feature/programme-os-v1`; date-stabilisation checkpoint after `1cd70c3`.
 
 This is the only document in this set that's expected to go stale — treat it
 as a snapshot, not a guarantee. If you find it disagrees with the code, trust
@@ -45,11 +45,45 @@ session context are **implemented**. Per V1 module:
 | Overview | **Implemented, DB-backed** | `src/routes/staff/overview.tsx` calls `useStaffOverview(cohortId)` — real query with loading/error states, not mock arrays. Underlying data may still be limited to whatever cohorts exist (including the internal sandbox cohort — see below). |
 | Students | **Implemented, DB-backed** | Roster (`staff/students/index.tsx`) and profile (`staff/students/$studentId.tsx`) both call real hooks (`useStaffStudentRoster`, presumably an equivalent for the detail view) with loading/error handling. Backed by the new `programme_student_details` table (added this branch, phase 1). |
 | Onboarding | **Implemented, DB-backed** | `staff/onboarding.tsx` — cohort-wide dashboard via `useStaffOnboardingOverview`, plus a working reminder-notify mutation (`useNotifyOnboardingReminder`). |
-| Communications | **Stub/placeholder** | 12-line route rendering `StaffPlaceholderPage`. |
-| Calendar | **Stub/placeholder** | Same. |
+| Communications | **Implemented, DB-backed** | Publishing, audience targeting, acknowledgement rollups and eligible-student drill-down using the existing announcement engine. Notifications are in-app only. |
+| Calendar | **Implemented, DB-backed** | Agenda/Week/Month, create/edit/delete, delay/move/cancel, change history and audience-aware RSVP breakdown using the existing event engine. |
 | Content | **Stub/placeholder** | Same. |
 | Team | **Stub/placeholder** | Placeholder text explicitly says it's planned for "Phase 4 — built on the existing owner \| staff + permissions model." |
 | Settings | **Stub/placeholder** | Same pattern as the above. |
+
+### Programme date handling checkpoint
+
+- Desktop and mobile programme event surfaces share explicit Asia/Jerusalem
+  formatting and strict local-time resolution. Invalid calendar dates and spring
+  DST gaps are rejected; repeated autumn times require an earlier/later choice
+  labelled with UTC offsets. Existing instants retain their known occurrence.
+- Both editors send local input/choice alongside the instant; the server verifies
+  agreement and requires end > start when an end is supplied. Instant-based live
+  operations remain supported with strict offset-bearing timestamp validation.
+- Untouched minute inputs retain existing seconds/milliseconds. Equivalent instant
+  representations and unchanged audiences are semantic no-ops: no event write,
+  freshness update, audience rewrite, change history or notification. Real changes
+  continue through the existing history/in-app notification pipeline.
+- Cohort ranges (join/header) and programme checklist due dates use a dedicated
+  strict date-only formatter, independent of the viewer's timezone. No migration
+  or stored-date rewrite is needed.
+- Verification: 206 tests pass, including DST transitions, invalid inputs,
+  London/New York/Israel viewer zones, date-only values, precision-preserving
+  edits and actual server mutation side effects. Typecheck and changed-line lint
+  pass, and the production build passes; legacy formatting findings are left untouched.
+- Browser verification in Shekk Test Programme: desktop/mobile gap rejection,
+  explicit earlier/later selection, stored-instant agreement, unchanged saves
+  (including mobile notify mode) without writes, real-change notifications,
+  student schedule display and live +15-minute delay. The disposable test event
+  and its two notifications were removed afterward.
+- Reopening the desktop editor now remounts it, preventing stale form state on
+  repeated edits. Real repeated-hour history changes show both UTC offsets.
+- Known V1 limits remain: workspace is selected from the latest staff grant;
+  current cohort from creation order; roster-derived audience pickers omit empty
+  groups. Content, Team and Settings remain placeholders.
+- Git reconciliation is pending separately: remote main's five unique commits are
+  generated Supabase type parentheses, generated route ordering, a Resend pin to
+  6.25.0/Bun lock update and two merges. No infrastructure migration is implied.
 
 There is an internal **Shekk testing sandbox** programme
 (`src/lib/programme-testbed.server.ts`, `src/lib/programme-ops.functions.ts`)

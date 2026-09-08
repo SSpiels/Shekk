@@ -166,19 +166,18 @@ function CalendarScreen() {
         }}
       />
 
-      <StaffEventEditor
-        // Remounts the form when the target event changes — Dialog keeps its
-        // content mounted while closed, so without this, useState's
-        // initial-value-from-props pattern would show stale data from
-        // whichever event the editor last opened for.
-        key={selected?.id ?? "new"}
-        open={editorOpen}
-        onClose={() => setEditorOpen(false)}
-        cohortId={cohortId}
-        event={selected}
-        groups={groups}
-        students={studentRefs}
-      />
+      {editorOpen ? (
+        <StaffEventEditor
+          // Fresh values on every open, including reopening the same saved event.
+          key={selected?.id ?? "new"}
+          open={editorOpen}
+          onClose={() => setEditorOpen(false)}
+          cohortId={cohortId}
+          event={selected}
+          groups={groups}
+          students={studentRefs}
+        />
+      ) : null}
 
       <StaffEventResponsesDrilldown
         open={responsesOpen}

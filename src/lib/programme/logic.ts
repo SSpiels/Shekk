@@ -1136,19 +1136,8 @@ export function eventResponseBreakdown(
   };
 }
 
-/* ───────────────────────── Israel time (explicit, DST-safe) ─────────────────────
- * Programme events happen in Israel; staff and students may be viewing from
- * anywhere before they fly. Every existing date helper (fmtTime/fmtDay in
- * components/programme/Bits.tsx, the datetime-local round-trip the mobile
- * EventEditor uses) reads/writes in the VIEWER's browser-local timezone, not
- * explicitly Israel time — correct only by coincidence when the viewer
- * happens to already be on Israel time. That's a real, pre-existing gap
- * (flagged, not fixed here — fixing it touches the mobile editor and is out
- * of scope for Calendar). The functions below are the explicit, DST-safe
- * alternative, used only by the new desktop Calendar: they always format
- * against — and always parse wall-clock input as — Asia/Jerusalem,
- * regardless of the viewer's own timezone. */
-
+/** Shared Israel event formatting and strict wall-clock resolution for mobile,
+ * desktop and the server. Date-only values use their own calendar parser. */
 export const ISRAEL_TIMEZONE = "Asia/Jerusalem";
 
 /** Asia/Jerusalem's UTC offset, in minutes, at a given instant — positive east of UTC. */
@@ -1240,24 +1229,79 @@ export function isoToIsraelLocalInput(iso: string): string {
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}`;
 }
 
-/**
- * A datetime-local value TYPED AS ISRAEL WALL-CLOCK TIME (e.g. "2026-09-10T18:00"
- * meaning 6pm in Israel, regardless of what timezone the browser is in) → the
- * correct UTC instant. Two-pass fixed point on the offset: stable for every real
- * instant except the ~1-hour skipped/repeated window at the exact DST changeover,
- * which is an accepted, documented limitation (programme events aren't scheduled
- * at 2am on a DST-transition night).
- */
-export function israelLocalInputToIso(value: string): string {
-  const [datePart, timePart] = value.split("T");
-  const [y, m, d] = datePart!.split("-").map(Number);
-  const [hh, mm] = (timePart ?? "00:00").split(":").map(Number);
-  const wallAsUtcMs = Date.UTC(y!, m! - 1, d!, hh, mm, 0);
-  let candidate = wallAsUtcMs;
-  for (let i = 0; i < 2; i++) {
-    candidate = wallAsUtcMs - israelOffsetMinutesAt(candidate) * 60_000;
-  }
-  return new Date(candidate).toISOString();
+export type IsraelTimeResolution = "earlier" | "later";
+export type IsraelTimeCandidate = { iso: string; offset: string };
+
+/** Strict Gregorian date, represented at UTC midnight only for formatting. */
+export function parseDateOnly(value: string): Date {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value))
+    throw new Error("Enter a valid calendar date (YYYY-MM-DD).");
+  const date = new Date(value + "T00:00:00Z");
+  if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, 10) !== value)
+    throw new Error("Enter a valid calendar date.");
+  return date;
+}
+
+export function fmtDateOnly(value: string): string {
+  return parseDateOnly(value).toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
+/** Enumerate actual offsets around this Israel date, then retain exact round trips.
+ * Sampling both sides of a transition finds both occurrences; no fixed-point guess
+ * or hardcoded transition dates. Scope is Israel scheduling, not arbitrary zones. */
+export function israelTimeCandidates(value: string): IsraelTimeCandidate[] {
+  const match = /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2})$/.exec(value);
+  if (!match || Number(match[2]) > 23 || Number(match[3]) > 59)
+    throw new Error("Enter a valid Israel date and time.");
+  const wall =
+    parseDateOnly(match[1]!).getTime() + Number(match[2]) * 3_600_000 + Number(match[3]) * 60_000;
+  const offsets = new Set<number>();
+  for (let hours = -48; hours <= 48; hours += 6)
+    offsets.add(israelOffsetMinutesAt(wall + hours * 3_600_000));
+  return [...offsets]
+    .map((offset) => {
+      const iso = new Date(wall - offset * 60_000).toISOString();
+      const abs = Math.abs(offset);
+      return {
+        iso,
+        offset:
+          "UTC" +
+          (offset >= 0 ? "+" : "-") +
+          String(Math.floor(abs / 60)).padStart(2, "0") +
+          ":" +
+          String(abs % 60).padStart(2, "0"),
+      };
+    })
+    .filter((candidate) => isoToIsraelLocalInput(candidate.iso) === value)
+    .sort((a, b) => a.iso.localeCompare(b.iso));
+}
+
+export function israelLocalInputToIso(value: string, resolution?: IsraelTimeResolution): string {
+  const candidates = israelTimeCandidates(value);
+  if (!candidates.length)
+    throw new Error(
+      "This time does not exist in Israel because the clocks move forward. Choose another time.",
+    );
+  if (candidates.length > 1 && !resolution)
+    throw new Error("This time occurs twice in Israel. Choose the earlier or later occurrence.");
+  if (resolution !== undefined && resolution !== "earlier" && resolution !== "later")
+    throw new Error("Choose earlier or later.");
+  return (resolution === "later" ? candidates[candidates.length - 1] : candidates[0])!.iso;
+}
+
+/** Existing instants already identify an occurrence; opening an editor must preserve it. */
+export function israelResolutionForInstant(iso?: string | null): IsraelTimeResolution | undefined {
+  if (!iso) return undefined;
+  const candidates = israelTimeCandidates(isoToIsraelLocalInput(iso));
+  if (candidates.length < 2) return undefined;
+  return Math.floor(Date.parse(iso) / 60_000) === Date.parse(candidates[0]!.iso) / 60_000
+    ? "earlier"
+    : "later";
 }
 
 /* ─────────────────────────── V2: one feed, one to-do list ─────────────────── */
@@ -1496,6 +1540,13 @@ export function changeLine(change: Pick<EventChange, "field" | "before" | "after
     if (sameDay) {
       const minutes = Math.round((after.getTime() - before.getTime()) / 60000);
       const head = minutes === 0 ? label : shiftWords(minutes);
+      if (minutes !== 0 && clockOf(before) === clockOf(after)) {
+        const offset = (d: Date) => {
+          const minutes = israelOffsetMinutesAt(d.getTime());
+          return `UTC${minutes >= 0 ? "+" : "-"}${String(Math.floor(Math.abs(minutes) / 60)).padStart(2, "0")}:${String(Math.abs(minutes) % 60).padStart(2, "0")}`;
+        };
+        return `${head} · ${clockOf(before)} (${offset(before)}) → ${clockOf(after)} (${offset(after)})`;
+      }
       return `${head} · ${clockOf(before)} → ${clockOf(after)}`;
     }
     return `Moved to ${dateOf(after)} · ${clockOf(before)} → ${dateOf(after)} ${clockOf(after)}`;

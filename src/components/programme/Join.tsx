@@ -1,3 +1,4 @@
+import { fmtDateOnly } from "@/lib/programme/logic";
 /**
  * Joining a programme — one code box that understands both kinds of code:
  * a cohort join code (participants) and an invite code (a director claiming
@@ -10,7 +11,7 @@ import { ShieldCheck } from "lucide-react";
 import { Card, Notice, PrimaryButton } from "@/components/AppShell";
 import { track } from "@/lib/analytics";
 import { cleanError, useJoinFlow } from "@/lib/useProgrammeHub";
-import { ErrorText, fmtDay } from "@/components/programme/Bits";
+import { ErrorText } from "@/components/programme/Bits";
 
 export function JoinPanel({ initialCode = "" }: { initialCode?: string }) {
   const navigate = useNavigate();
@@ -98,8 +99,8 @@ export function JoinPanel({ initialCode = "" }: { initialCode?: string }) {
             ) : null}
             {result.cohort.startsOn ? (
               <p className="mt-1 text-xs text-muted-foreground">
-                {fmtDay(result.cohort.startsOn)}
-                {result.cohort.endsOn ? ` – ${fmtDay(result.cohort.endsOn)}` : ""}
+                {fmtDateOnly(result.cohort.startsOn)}
+                {result.cohort.endsOn ? ` – ${fmtDateOnly(result.cohort.endsOn)}` : ""}
                 {result.cohort.city ? ` · ${result.cohort.city}` : ""}
               </p>
             ) : null}

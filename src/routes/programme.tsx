@@ -1,3 +1,4 @@
+import { fmtDateOnly } from "@/lib/programme/logic";
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { CalendarDays, Inbox, Info, LayoutDashboard, Settings2 } from "lucide-react";
 import { AppShell, Card } from "@/components/AppShell";
@@ -112,8 +113,8 @@ function ProgrammeLayout() {
             </p>
             {hub.startsOn ? (
               <p className="mt-2 text-[11px] opacity-70">
-                {fmtDay(hub.startsOn)}
-                {hub.endsOn ? ` – ${fmtDay(hub.endsOn)}` : ""}
+                {fmtDateOnly(hub.startsOn)}
+                {hub.endsOn ? ` – ${fmtDateOnly(hub.endsOn)}` : ""}
                 {hub.city ? ` · ${hub.city}` : ""}
               </p>
             ) : null}

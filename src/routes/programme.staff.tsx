@@ -1,3 +1,4 @@
+import { fmtDateOnly } from "@/lib/programme/logic";
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
@@ -475,7 +476,7 @@ function StaffScreen() {
                       <p className="text-[13.5px] font-semibold">{i.title}</p>
                       <p className="text-[11px] text-muted-foreground">
                         {i.required ? "Required" : "Optional"}
-                        {i.dueOn ? ` · due ${fmtDay(i.dueOn)}` : ""} · {i.doneCount ?? 0} done
+                        {i.dueOn ? ` · due ${fmtDateOnly(i.dueOn)}` : ""} · {i.doneCount ?? 0} done
                       </p>
                     </div>
                     {canContent && hub.cohortId ? (

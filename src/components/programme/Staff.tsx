@@ -1,3 +1,5 @@
+import { IsraelTimeInput } from "@/components/programme/IsraelTimeInput";
+import { resolveEventTime, validateEventInterval } from "@/lib/programme/event-time";
 /**
  * Staff editors — the sheets a madrich or programme office uses from a phone.
  *
@@ -38,7 +40,8 @@ import {
   // 18:00 in Israel, not 18:00 where they're standing.
   fmtIsraelTime,
   isoToIsraelLocalInput,
-  israelLocalInputToIso,
+  israelResolutionForInstant,
+  type IsraelTimeResolution,
   type ActivityKind,
   type Audience,
   type ProgrammeEvent,
@@ -68,6 +71,12 @@ export function EventEditor({
     isoToIsraelLocalInput(event?.startsAt ?? new Date().toISOString()),
   );
   const [endsAt, setEndsAt] = useState(event?.endsAt ? isoToIsraelLocalInput(event.endsAt) : "");
+  const [startResolution, setStartResolution] = useState<IsraelTimeResolution | undefined>(
+    israelResolutionForInstant(event?.startsAt),
+  );
+  const [endResolution, setEndResolution] = useState<IsraelTimeResolution | undefined>(
+    israelResolutionForInstant(event?.endsAt),
+  );
   const [locationLabel, setLocationLabel] = useState(event?.locationLabel ?? "");
   const [meetingPoint, setMeetingPoint] = useState(event?.meetingPoint ?? "");
   const [onlineUrl, setOnlineUrl] = useState(event?.onlineUrl ?? "");
@@ -83,51 +92,66 @@ export function EventEditor({
 
   const busy = createEvent.isPending || updateEvent.isPending;
 
-  const fields = {
-    title: title.trim(),
-    description: description.trim() || null,
-    startsAt: startsAt ? israelLocalInputToIso(startsAt) : new Date().toISOString(),
-    endsAt: endsAt ? israelLocalInputToIso(endsAt) : null,
-    locationLabel: locationLabel.trim() || null,
-    meetingPoint: meetingPoint.trim() || null,
-    onlineUrl: onlineUrl.trim() || null,
-    eventType,
-    ...activityKindFields(kind),
-    capacity: kind === "limited" && capacity ? Number(capacity) : null,
-    requiresAck,
-    audience,
-  };
-
   function save() {
     setError(null);
     if (!title.trim()) {
       setError("Give it a title participants will recognise.");
       return;
     }
-    const onError = (e: unknown) => setError(cleanError(e, "We couldn't save that."));
-    if (event) {
-      updateEvent.mutate(
-        { eventId: event.id, patch: { ...fields, notifyLevel, note: note.trim() || null } },
-        {
-          onSuccess: () => {
-            track("programme_staff_event_updated");
-            onClose();
+    try {
+      const fields = {
+        title: title.trim(),
+        description: description.trim() || null,
+        startsAt: resolveEventTime(
+          { value: startsAt, resolution: startResolution },
+          event?.startsAt,
+        ),
+        endsAt: endsAt
+          ? resolveEventTime({ value: endsAt, resolution: endResolution }, event?.endsAt)
+          : null,
+        startsLocal: { value: startsAt, resolution: startResolution },
+        endsLocal: endsAt ? { value: endsAt, resolution: endResolution } : undefined,
+        locationLabel: locationLabel.trim() || null,
+        meetingPoint: meetingPoint.trim() || null,
+        onlineUrl: onlineUrl.trim() || null,
+        eventType,
+        ...activityKindFields(kind),
+        capacity: kind === "limited" && capacity ? Number(capacity) : null,
+        requiresAck,
+        audience,
+      };
+
+      const onError = (e: unknown) => setError(cleanError(e, "We couldn't save that."));
+      validateEventInterval(fields.startsAt, fields.endsAt);
+      if (event) {
+        updateEvent.mutate(
+          {
+            eventId: event.id,
+            patch: { ...fields, notifyLevel, note: note.trim() || null },
           },
-          onError,
-        },
-      );
-    } else {
-      if (!hub.cohortId) return;
-      createEvent.mutate(
-        { cohortId: hub.cohortId, input: fields },
-        {
-          onSuccess: () => {
-            track("programme_staff_event_created");
-            onClose();
+          {
+            onSuccess: () => {
+              track("programme_staff_event_updated");
+              onClose();
+            },
+            onError,
           },
-          onError,
-        },
-      );
+        );
+      } else {
+        if (!hub.cohortId) return;
+        createEvent.mutate(
+          { cohortId: hub.cohortId, input: fields },
+          {
+            onSuccess: () => {
+              track("programme_staff_event_created");
+              onClose();
+            },
+            onError,
+          },
+        );
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Enter a valid Israel date and time.");
     }
   }
 
@@ -140,10 +164,24 @@ export function EventEditor({
 
         <div className="grid grid-cols-2 gap-2">
           <Field label="Starts" hint="Israel time, wherever you are">
-            <input type="datetime-local" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={inputClass} />
+            <IsraelTimeInput
+              label="Starts"
+              value={startsAt}
+              onChange={setStartsAt}
+              resolution={startResolution}
+              onResolution={setStartResolution}
+              className={inputClass}
+            />
           </Field>
           <Field label="Ends (optional)">
-            <input type="datetime-local" value={endsAt} onChange={(e) => setEndsAt(e.target.value)} className={inputClass} />
+            <IsraelTimeInput
+              label="Ends"
+              value={endsAt}
+              onChange={setEndsAt}
+              resolution={endResolution}
+              onResolution={setEndResolution}
+              className={inputClass}
+            />
           </Field>
         </div>
 

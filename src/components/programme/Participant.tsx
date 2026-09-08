@@ -1,3 +1,4 @@
+import { fmtDateOnly } from "@/lib/programme/logic";
 /**
  * Participant-facing programme pieces.
  *
@@ -444,7 +445,9 @@ export function ChecklistRow({ item }: { item: ChecklistItem }) {
         </p>
         {item.details ? <p className="mt-0.5 text-xs text-muted-foreground">{item.details}</p> : null}
         {item.dueOn ? (
-          <p className="mt-1 text-[11px] font-semibold text-primary">Due {fmtDay(item.dueOn)}</p>
+          <p className="mt-1 text-[11px] font-semibold text-primary">
+            Due {fmtDateOnly(item.dueOn)}
+          </p>
         ) : null}
         {item.actionUrl ? (
           <a href={item.actionUrl} className="mt-1.5 inline-block text-[12px] font-bold text-primary">

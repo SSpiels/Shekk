@@ -45,7 +45,14 @@ const status = z.enum([
 const notifyLevel = z.enum(["silent", "notify", "urgent"]);
 const iso = z.string().trim().min(4).max(40);
 
+const localEventTime = z.object({
+  value: z.string().max(16),
+  resolution: z.enum(["earlier", "later"]).optional(),
+});
+
 const eventFields = z.object({
+  startsLocal: localEventTime.optional(),
+  endsLocal: localEventTime.optional(),
   title: z.string().trim().min(1).max(160),
   description: text(4000),
   startsAt: iso,

@@ -1,3 +1,5 @@
+import { IsraelTimeInput } from "@/components/programme/IsraelTimeInput";
+import { resolveEventTime, validateEventInterval } from "@/lib/programme/event-time";
 /**
  * Desktop event composer/editor. Same fields, same server functions
  * (staffCreateEvent/staffUpdateEvent) and the same mandatory/optional/
@@ -18,7 +20,8 @@ import {
   EVENT_TYPES,
   everyone,
   isoToIsraelLocalInput,
-  israelLocalInputToIso,
+  israelResolutionForInstant,
+  type IsraelTimeResolution,
   type ActivityKind,
   type Audience,
   type StaffCalendarEvent,
@@ -59,6 +62,12 @@ export function StaffEventEditor({
     isoToIsraelLocalInput(event?.startsAt ?? new Date().toISOString()),
   );
   const [endsAt, setEndsAt] = useState(event?.endsAt ? isoToIsraelLocalInput(event.endsAt) : "");
+  const [startResolution, setStartResolution] = useState<IsraelTimeResolution | undefined>(
+    israelResolutionForInstant(event?.startsAt),
+  );
+  const [endResolution, setEndResolution] = useState<IsraelTimeResolution | undefined>(
+    israelResolutionForInstant(event?.endsAt),
+  );
   const [locationLabel, setLocationLabel] = useState(event?.locationLabel ?? "");
   const [meetingPoint, setMeetingPoint] = useState(event?.meetingPoint ?? "");
   const [onlineUrl, setOnlineUrl] = useState(event?.onlineUrl ?? "");
@@ -82,31 +91,46 @@ export function StaffEventEditor({
       setError("Set a start time.");
       return;
     }
-    const fields = {
-      title: title.trim(),
-      description: description.trim() || null,
-      startsAt: israelLocalInputToIso(startsAt),
-      endsAt: endsAt ? israelLocalInputToIso(endsAt) : null,
-      locationLabel: locationLabel.trim() || null,
-      meetingPoint: meetingPoint.trim() || null,
-      onlineUrl: onlineUrl.trim() || null,
-      eventType,
-      ...activityKindFields(kind),
-      capacity: kind === "limited" && capacity ? Number(capacity) : null,
-      requiresAck,
-      audience,
-    };
+    try {
+      const fields = {
+        title: title.trim(),
+        description: description.trim() || null,
+        startsAt: resolveEventTime(
+          { value: startsAt, resolution: startResolution },
+          event?.startsAt,
+        ),
+        endsAt: endsAt
+          ? resolveEventTime({ value: endsAt, resolution: endResolution }, event?.endsAt)
+          : null,
+        startsLocal: { value: startsAt, resolution: startResolution },
+        endsLocal: endsAt ? { value: endsAt, resolution: endResolution } : undefined,
+        locationLabel: locationLabel.trim() || null,
+        meetingPoint: meetingPoint.trim() || null,
+        onlineUrl: onlineUrl.trim() || null,
+        eventType,
+        ...activityKindFields(kind),
+        capacity: kind === "limited" && capacity ? Number(capacity) : null,
+        requiresAck,
+        audience,
+      };
 
-    if (event) {
-      updateEvent.mutate(
-        { eventId: event.id, patch: { ...fields, notifyLevel: "silent" } },
-        { onSuccess: onClose, onError: () => setError("We couldn't save that.") },
-      );
-    } else {
-      createEvent.mutate(fields, {
-        onSuccess: onClose,
-        onError: () => setError("We couldn't publish that."),
-      });
+      validateEventInterval(fields.startsAt, fields.endsAt);
+      if (event) {
+        updateEvent.mutate(
+          { eventId: event.id, patch: { ...fields, notifyLevel: "silent" } },
+          {
+            onSuccess: onClose,
+            onError: () => setError("We couldn't save that."),
+          },
+        );
+      } else {
+        createEvent.mutate(fields, {
+          onSuccess: onClose,
+          onError: () => setError("We couldn't publish that."),
+        });
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Enter a valid Israel date and time.");
     }
   };
 
@@ -136,10 +160,12 @@ export function StaffEventEditor({
               <label className="text-[12.5px] font-semibold text-muted-foreground">
                 Starts <span className="font-normal text-muted-foreground">(Israel time)</span>
               </label>
-              <input
-                type="datetime-local"
+              <IsraelTimeInput
+                label="Starts"
                 value={startsAt}
-                onChange={(e) => setStartsAt(e.target.value)}
+                onChange={setStartsAt}
+                resolution={startResolution}
+                onResolution={setStartResolution}
                 className={inputClass}
               />
             </div>
@@ -147,10 +173,12 @@ export function StaffEventEditor({
               <label className="text-[12.5px] font-semibold text-muted-foreground">
                 Ends <span className="font-normal text-muted-foreground">(optional)</span>
               </label>
-              <input
-                type="datetime-local"
+              <IsraelTimeInput
+                label="Ends"
                 value={endsAt}
-                onChange={(e) => setEndsAt(e.target.value)}
+                onChange={setEndsAt}
+                resolution={endResolution}
+                onResolution={setEndResolution}
                 className={inputClass}
               />
             </div>

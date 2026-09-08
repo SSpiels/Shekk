@@ -1,3 +1,9 @@
+import {
+  sameEventValue,
+  validateEventTime,
+  validateEventInterval,
+  type LocalEventTime,
+} from "./programme/event-time";
 /**
  * Programme operations — server only.
  *
@@ -900,6 +906,8 @@ async function notifyAudience(
 /* ───────────────────────────────── Staff: events ─────────────────────────── */
 
 export type EventInput = {
+  startsLocal?: LocalEventTime;
+  endsLocal?: LocalEventTime;
   title: string;
   description?: string | null;
   startsAt: string;
@@ -923,6 +931,13 @@ export type EventInput = {
 
 export async function createEvent(db: Db, userId: string, cohortId: string, input: EventInput) {
   await requireStaff(db, userId, cohortId, "events");
+  input = {
+    ...input,
+    startsAt: validateEventTime(input.startsAt, input.startsLocal),
+    endsAt: input.endsAt == null ? input.endsAt : validateEventTime(input.endsAt, input.endsLocal),
+  };
+  if (input.endsLocal && input.endsAt == null) throw new Error("End time is missing.");
+  validateEventInterval(input.startsAt, input.endsAt);
   const audience = input.audience ?? everyone;
   const { data, error } = await db
     .from("programme_events")
@@ -976,11 +991,31 @@ const FIELD_LABEL: Record<string, string> = {
 export type EventUpdate = Partial<EventInput> & { notifyLevel?: NotifyLevel; note?: string | null };
 
 export async function updateEvent(db: Db, userId: string, eventId: string, patch: EventUpdate) {
-  const { data: existing } = await db.from("programme_events").select("*").eq("id", eventId).maybeSingle();
+  const { data: existing } = await db
+    .from("programme_events")
+    .select("*")
+    .eq("id", eventId)
+    .maybeSingle();
   if (!existing) throw new Error("That event no longer exists");
   const before = existing as Row;
   const cohortId = String(before["cohort_id"]);
   await requireStaff(db, userId, cohortId, "events");
+
+  patch = { ...patch };
+  if (patch.startsLocal && patch.startsAt === undefined) throw new Error("Start time is missing.");
+  if (patch.endsLocal && patch.endsAt == null) throw new Error("End time is missing.");
+  if (patch.startsAt !== undefined)
+    patch.startsAt = validateEventTime(
+      patch.startsAt,
+      patch.startsLocal,
+      String(before["starts_at"]),
+    );
+  if (patch.endsAt != null)
+    patch.endsAt = validateEventTime(patch.endsAt, patch.endsLocal, s(before, "ends_at"));
+  validateEventInterval(
+    patch.startsAt ?? String(before["starts_at"]),
+    patch.endsAt === undefined ? s(before, "ends_at") : patch.endsAt,
+  );
 
   const map: [keyof EventInput, string][] = [
     ["title", "title"],
@@ -1003,28 +1038,71 @@ export async function updateEvent(db: Db, userId: string, eventId: string, patch
     ["urgent", "urgent"],
   ];
 
-  const update: Row = { updated_by: userId, last_changed_at: new Date().toISOString() };
-  const diffs: { field: string; before: string | null; after: string | null }[] = [];
+  const update: Row = {
+    updated_by: userId,
+    last_changed_at: new Date().toISOString(),
+  };
+  const diffs: {
+    field: string;
+    before: string | null;
+    after: string | null;
+  }[] = [];
   for (const [key, column] of map) {
     const value = (patch as Row)[key as string];
     if (value === undefined) continue;
-    update[column] = value;
     const prev = before[column] ?? null;
-    if (String(prev ?? "") !== String(value ?? "")) {
-      diffs.push({ field: column, before: prev == null ? null : String(prev), after: value == null ? null : String(value) });
+    if (!sameEventValue(column, prev, value)) {
+      update[column] = value;
+      diffs.push({
+        field: column,
+        before: prev == null ? null : String(prev),
+        after: value == null ? null : String(value),
+      });
     }
   }
+  let audienceChanged = false;
   if (patch.audience) {
-    update["audience_kind"] = patch.audience.kind;
-    if (String(before["audience_kind"]) !== patch.audience.kind) {
-      diffs.push({ field: "audience_kind", before: String(before["audience_kind"]), after: patch.audience.kind });
+    // Read only this event's targets; fail closed instead of treating a read error as empty.
+    const { data: rows, error: audienceError } = await db
+      .from("programme_audiences")
+      .select("group_id, user_id")
+      .eq("subject_type", "event")
+      .eq("subject_id", eventId);
+    if (audienceError) throw new Error("Could not check the event audience.");
+    const previous: Audience = {
+      kind: String(before["audience_kind"]) as AudienceKind,
+      groupIds: (rows ?? [])
+        .filter((r: Row) => r["group_id"])
+        .map((r: Row) => String(r["group_id"])),
+      userIds: (rows ?? []).filter((r: Row) => r["user_id"]).map((r: Row) => String(r["user_id"])),
+    };
+    const semantic = (a: Audience) =>
+      JSON.stringify({
+        kind: a.kind,
+        groupIds: a.kind === "everyone" ? [] : [...new Set(a.groupIds)].sort(),
+        userIds: a.kind === "everyone" ? [] : [...new Set(a.userIds)].sort(),
+      });
+    audienceChanged = semantic(previous) !== semantic(patch.audience);
+    if (audienceChanged) {
+      update["audience_kind"] = patch.audience.kind;
+      diffs.push({
+        field: "audience_kind",
+        before: previous.kind !== patch.audience.kind ? previous.kind : null,
+        after: previous.kind !== patch.audience.kind ? patch.audience.kind : "Recipients updated",
+      });
     }
   }
 
-  const { error } = await db.from("programme_events").update(update as never).eq("id", eventId);
+  // A save is not a change. Do not touch timestamps, audiences, history or notifications.
+  if (!diffs.length) return readHub(db, userId);
+
+  const { error } = await db
+    .from("programme_events")
+    .update(update as never)
+    .eq("id", eventId);
   if (error) throw new Error(error.message || "We couldn't update that event");
 
-  if (patch.audience) await writeAudience(db, cohortId, "event", eventId, patch.audience);
+  if (audienceChanged) await writeAudience(db, cohortId, "event", eventId, patch.audience);
 
   const level: NotifyLevel = patch.notifyLevel ?? "silent";
   if (diffs.length) {
