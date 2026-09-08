@@ -601,6 +601,22 @@ export const staffCohortInvite = createServerFn({ method: "POST" })
     return cohortInviteDetails(context.supabase, context.userId, data.cohortId);
   });
 
+export const staffCohortRegenerateJoinCode = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ cohortId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffRegenerateJoinCode } = await import("@/lib/programme-ops.server");
+    return staffRegenerateJoinCode(context.supabase, context.userId, data.cohortId);
+  });
+
+export const staffCohortSetJoinable = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ cohortId: uuid, open: z.boolean() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffSetCohortJoinable } = await import("@/lib/programme-ops.server");
+    return staffSetCohortJoinable(context.supabase, context.userId, data.cohortId, data.open);
+  });
+
 /* ─────────────────────────────── Programme OS: Team ────────────────────────── */
 
 export const staffTeamOverview = createServerFn({ method: "POST" })

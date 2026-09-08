@@ -1,10 +1,11 @@
 # Current state
 
 **Last audited:** 2026-09-08
-**Branch audited:** `feature/programme-os-v1`; Integration & Overview
-checkpoint, after the Team checkpoint, after the Content data-integrity &
-security checkpoint, after the Content module checkpoint, after the
-date-stabilisation checkpoint (`ade0992`).
+**Branch audited:** `feature/programme-os-v1`; Pilot onboarding & Settings
+checkpoint, after the Integration & Overview checkpoint, after the Team
+checkpoint, after the Content data-integrity & security checkpoint, after
+the Content module checkpoint, after the date-stabilisation checkpoint
+(`ade0992`).
 
 This is the only document in this set that's expected to go stale — treat it
 as a snapshot, not a guarantee. If you find it disagrees with the code, trust
@@ -52,7 +53,7 @@ session context are **implemented**. Per V1 module:
 | Calendar | **Implemented, DB-backed** | Agenda/Week/Month, create/edit/delete, delay/move/cancel, change history and audience-aware RSVP breakdown using the existing event engine. |
 | Content | **Implemented, DB-backed** | `staff/content.tsx` — welcome message, checklist, documents, contacts and places, create/edit/delete, on the existing content/audience engine. See "Content module" below. |
 | Team | **Implemented, DB-backed, hardened** | `staff/team.tsx` — roster, invite, role/permissions, remove, on the existing `programme_staff`/`programme_invites` schema. Last-owner protection is now DB-enforced (not just app-level), invitation codes are an owner-only read at the RLS layer too. See "Team checkpoint" and "Integration & Overview checkpoint" below. |
-| Settings | **Stub/placeholder** | Same pattern as the above. |
+| Settings | **Implemented, DB-backed, deliberately small** | `staff/settings.tsx` — the cohort join code (view for any staff, rotate/open-close for an owner) plus read-only programme/cohort identity. Programme name/organisation/dates stay Shekk-admin-only and say so on-screen, rather than exposing a write path with no real need behind it yet. See "Pilot onboarding & Settings checkpoint" below. |
 
 ### Programme date handling checkpoint
 
@@ -428,6 +429,154 @@ this exact pass beyond the 2 invite-visibility regression tests already
 counted there), typecheck and lint pass on every changed line, production
 build passes. Live-verified as above; full account cleanup confirmed by a
 direct read.
+
+### Pilot onboarding & Settings checkpoint
+
+Traced the real programme-to-students path end to end before writing any
+code, then implemented the single highest-impact gap it found. No parallel
+onboarding system was built; no CSV/bulk importer was built.
+
+**How provisioning actually works today**, confirmed by reading
+`admin/programmes.tsx` (1027 lines) and the schema, not assumed:
+- A **Shekk operator** creates the programme and its first cohort from the
+  internal `/admin` console (`NewProgrammeSheet`, `ProgrammeCohorts`) —
+  `adminCreateProgramme`/`adminCreateCohort`, `assertAdmin`-gated, exactly
+  as the Integration checkpoint's blocker list already said. This is
+  accepted as fine for a first pilot per this checkpoint's brief — no
+  self-service provisioning was built.
+- The **first owner** is assigned from the same console's People tab,
+  either by attaching an existing account by email or by minting a claim
+  code for someone without one yet (`ProgrammePeople`) — already built,
+  unchanged.
+- **Students join themselves** with a per-cohort join code
+  (`programme_cohorts.join_code`) at `/join/<code>`, via the real
+  `programmeCodePreview`/`programmeJoin` server functions
+  (`programme-ops.server.ts`, backed by the `programme_join` SQL RPC) —
+  this is the actual, live, already-working student-onboarding mechanism,
+  not a fallback. There is no per-student invite step for students and no
+  CSV import anywhere in the codebase (confirmed by grep — no `csv`,
+  `bulk`, or `import` hits in `admin/programmes.tsx` beyond JS `import`
+  statements).
+- **Duplicates/re-joins are already handled correctly** inside
+  `programme_join`: the same code re-entered by an already-joined student
+  is idempotent; a different cohort's code marks the old membership
+  `left` and creates a new one rather than duplicating rows. This was read
+  directly in the migration SQL, not inferred. Nothing needed to change
+  here.
+- A **legacy** `programme.server.ts`/`useProgramme.ts` layer exists in
+  parallel but its write paths (`joinWithCode`, `previewCode`) are dead —
+  grepped for every call site and found none; only its read functions are
+  used, as Home's safe fallback if the active `useProgrammeHub()` hasn't
+  loaded yet. Confirmed this is not a second onboarding system: both
+  layers bottom out in the same `programme_join`/`programme_code_preview`
+  RPCs.
+- **What was genuinely missing**: nowhere in Programme OS could an owner
+  or any staff member *find* their own cohort's join code. It only
+  existed inside the internal Shekk admin console. `cohortInviteDetails`
+  — a correct, already-written, staff-permission-checked function — had
+  no UI calling it anywhere in `/staff`. That gap, not a missing importer,
+  was the smallest useful fix for "students join the correct cohort."
+
+**What was implemented** (all reusing the existing schema/engine, no new
+tables, no new migration):
+- `cohortInviteDetails` extended from `{code, path}` to
+  `{code, path, status, canManage}`, so a Settings screen can show the
+  join code, whether joining is open/closed/archived, and whether the
+  viewer is allowed to manage it — in one call.
+- Two new owner-only server functions, `staffRegenerateJoinCode` and
+  `staffSetCohortJoinable`, both re-checking the caller's owner role
+  against the cohort's *actual* `programme_id` server-side (not a claimed
+  one) before writing, and both refusing to act on an archived cohort.
+- `staff/settings.tsx` rebuilt from the Phase-4 placeholder into a real
+  screen: a **Join code** card (any staff can view/copy the link; an
+  owner additionally sees Close/Reopen joining and a confirm-gated New
+  code action) and a read-only **Programme details** card (name,
+  organisation, cohort name/year from `activeWorkspace`), explicitly
+  labelled as Shekk-admin-managed with no write path — see "Settings
+  scope" below for why.
+- `useStaffSettings.ts` — the React Query hook layer (`useStaffCohort
+  Settings`, `useStaffRegenerateJoinCode`, `useStaffSetCohortJoinable`),
+  matching the pattern every other Programme OS module already uses.
+
+**Resulting end-to-end pilot workflow**: (1) Shekk operator creates the
+programme and one cohort in `/admin`; (2) operator assigns the first
+owner by email or claim code; (3) owner signs in, opens `/staff/settings`,
+copies the join link — no separate lookup or extra tooling needed; (4)
+owner shares that link however suits the programme (WhatsApp, email, a
+printed sheet); (5) each student opens it, previews the programme name,
+and joins — landing straight on their real welcome message, schedule and
+checklist. Re-joining, a wrong/expired code, or a student who already has
+a Shekk account from elsewhere are all handled by the existing
+`programme_join` RPC, not new code.
+
+**Settings scope and its limits**: deliberately only the join code and a
+read-only identity view — both because they're the only "settings" with
+real backend behaviour behind them today, and per the brief's explicit
+instruction not to invent settings without one. Programme name,
+organisation and cohort dates stay Shekk-admin-only; the screen says so
+on-screen rather than silently omitting the fields or exposing an unsafe
+write path. Same owner/staff permission tiers as Team (`requireOwner`/
+`requireStaff`), same RLS boundary — no parallel permissions model.
+
+**Checklist-history safeguard**: re-confirmed intact this pass without
+repeating the full browser journey — a direct `staffContentOverview` call
+against the Shekk Test Programme's cohort showed `archivedAt` present on
+every checklist item, 10 active items, 0 archived, matching the Content
+data-integrity checkpoint's soft-delete design; `content.test.ts` (its
+regression coverage) is unchanged and still passing.
+
+**Tests and live verification**: `settings.test.ts` added, 10 tests —
+`cohortInviteDetails` (view access, `canManage` correctness for owner vs
+staff, permission rejection for a non-staff caller), `staffRegenerate
+JoinCode` (write, cross-programme-ownership rejection, not-found), `staff
+SetCohortJoinable` (open, close, archived-cohort refusal, permission
+rejection) — following the same hand-rolled fake-Supabase-client pattern
+as `team.test.ts`/`content.test.ts`. Full suite: 260/260 passing,
+typecheck clean, lint clean on changed lines, production build passes.
+Live-verified in the browser against the Shekk Test Programme: the join
+code renders and copies correctly; **Close joining** was clicked and then
+independently confirmed server-side by calling `programmeCodePreview`
+directly, which returned `kind: "unknown"` — proving the toggle has a
+real effect, not just a UI label — then reopened.
+
+**Pilot blockers, ranked** (severity to an actual first pilot, not a
+wishlist):
+1. **Real blocker, unchanged from the Integration checkpoint**: only a
+   Shekk operator can provision a programme/cohort and assign the first
+   owner — accepted as fine for pilot 1 per this checkpoint's brief, but
+   still the first manual step every time.
+2. **Not a blocker**: link-only documents. A pilot programme can host
+   files anywhere with a shareable link (Drive, Dropbox, a school
+   intranet) and paste the link in — no native upload needed to run a
+   small pilot.
+3. **Not a blocker**: in-app-only notifications. Staff already see
+   acknowledgement/read-state in Communications; for a small, engaged
+   pilot cohort, in-app is enough to start — real push/email delivery is
+   a later enhancement, not a launch requirement.
+4. **Not a blocker**: automatic cohort/workspace selection (latest staff
+   grant, oldest cohort). A pilot programme is expected to have exactly
+   one active cohort per owner at first, so this doesn't surface in
+   practice yet — worth a manual switcher once a programme runs multiple
+   cohorts at once, not before.
+5. **Cosmetic, pre-existing**: the legacy `shekel-connect.lovable.app`
+   redirect entry in `auth.tsx` — unrelated to onboarding, left alone.
+
+None of items 2–4 were built this pass, per the brief's explicit
+instruction not to build native uploads, push/email delivery or a CRM
+just because they're on a gap list — the actual missing piece for a pilot
+was the join-code visibility gap fixed above.
+
+**What's needed from FJL for a genuine pilot** (not fabricated — the
+Shekk Test Programme and disposable fixtures stand in until this exists):
+a real programme/cohort name and rough size (roster count, even
+approximate); who the first owner should be (name + email); one place to
+point students at for programme documents (an existing Drive/Dropbox
+link is enough — no upload pipeline needed); whatever they already use
+for a welcome message, schedule and an arrival/onboarding checklist
+(even informal notes are enough to seed Content); and how they'd
+realistically distribute a join link to their students (a channel that
+already exists — WhatsApp group, email list, printed orientation
+sheet — nothing new to build for this).
 
 There is an internal **Shekk testing sandbox** programme
 (`src/lib/programme-testbed.server.ts`, `src/lib/programme-ops.functions.ts`)

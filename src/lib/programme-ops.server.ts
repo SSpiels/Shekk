@@ -2560,17 +2560,91 @@ export async function seedDefaultChecklist(db: Db, userId: string, cohortId: str
 
 /* ─────────────────────── Staff: invites for participants ─────────────────── */
 
-export async function cohortInviteDetails(db: Db, userId: string, cohortId: string) {
+/**
+ * The one thing every pilot actually needs and had no way to see inside
+ * Programme OS at all: the cohort's own join code (`/staff` had zero
+ * surface for it — only the internal Shekk admin console showed it). Any
+ * staff can view/share it (same "Content is staff-readable" precedent);
+ * `canManage` tells the caller whether they can also change it — reused
+ * by staffRegenerateJoinCode/staffSetCohortJoinable below rather than
+ * re-deriving ownership per action.
+ */
+export async function cohortInviteDetails(
+  db: Db,
+  userId: string,
+  cohortId: string,
+): Promise<{ code: string; path: string; status: string; canManage: boolean }> {
   await requireStaff(db, userId, cohortId, "participants");
   const service = await adminDb();
   const { data } = await service
     .from("programme_cohorts")
-    .select("join_code, name")
+    .select("join_code, status, programme_id")
     .eq("id", cohortId)
     .maybeSingle();
   if (!data) throw new Error("That cohort no longer exists");
-  const code = String((data as Row)["join_code"]);
+  const row = data as Row;
+  const code = String(row["join_code"]);
+  const { data: callerRow } = await db
+    .from("programme_staff")
+    .select("role")
+    .eq("programme_id", String(row["programme_id"]))
+    .eq("user_id", userId)
+    .maybeSingle();
+  const canManage = Boolean(callerRow && String((callerRow as Row)["role"]) === "owner");
+  return { code, path: `/join/${code}`, status: String(row["status"]), canManage };
+}
+
+/** A leaked or no-longer-wanted join code can be rotated without asking
+ *  Shekk to do it — same owner-only bar as any other Team-adjacent change
+ *  that affects who can get into the programme. */
+export async function staffRegenerateJoinCode(
+  db: Db,
+  userId: string,
+  cohortId: string,
+): Promise<{ code: string; path: string }> {
+  const service = await adminDb();
+  const { data } = await service
+    .from("programme_cohorts")
+    .select("programme_id")
+    .eq("id", cohortId)
+    .maybeSingle();
+  if (!data) throw new Error("That cohort no longer exists");
+  await requireOwner(db, userId, String((data as Row)["programme_id"]));
+  const code = randomCode("", 6);
+  const { error } = await service
+    .from("programme_cohorts")
+    .update({ join_code: code } as never)
+    .eq("id", cohortId);
+  if (error) throw new Error(error.message || "We couldn't update the join code");
   return { code, path: `/join/${code}` };
+}
+
+/** Stops (or resumes) new students joining with the code — existing
+ *  members are never affected, this only gates programme_join's own
+ *  `c.status = 'open'` check. */
+export async function staffSetCohortJoinable(
+  db: Db,
+  userId: string,
+  cohortId: string,
+  open: boolean,
+): Promise<{ status: string }> {
+  const service = await adminDb();
+  const { data } = await service
+    .from("programme_cohorts")
+    .select("programme_id, status")
+    .eq("id", cohortId)
+    .maybeSingle();
+  if (!data) throw new Error("That cohort no longer exists");
+  const row = data as Row;
+  if (String(row["status"]) === "archived") throw new Error("This cohort is archived.");
+  await requireOwner(db, userId, String(row["programme_id"]));
+  const status = open ? "open" : "closed";
+  const { error } = await service
+    .from("programme_cohorts")
+    .update({ status } as never)
+    .eq("id", cohortId);
+  if (error) throw new Error(error.message || "We couldn't update that cohort");
+  return { status };
 }
 
 /* ─────────────────────────────── Programme OS: Team ───────────────────────── */
