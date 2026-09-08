@@ -68,6 +68,9 @@ import {
   type StaffStudentGroupRef,
   type StaffStudentProfile,
   type StaffStudentSummary,
+  type StaffTeamInvite,
+  type StaffTeamMember,
+  type StaffTeamOverview,
   type StaffWorkspace,
 } from "./programme/logic";
 
@@ -2503,6 +2506,287 @@ export async function cohortInviteDetails(db: Db, userId: string, cohortId: stri
   if (!data) throw new Error("That cohort no longer exists");
   const code = String((data as Row)["join_code"]);
   return { code, path: `/join/${code}` };
+}
+
+/* ─────────────────────────────── Programme OS: Team ───────────────────────── */
+
+/**
+ * Any staff member can view their team (role/permissions transparency,
+ * same spirit as Content being staff-readable) — only an owner can manage
+ * it (canManage below), same "team wasn't in staff_can's default-grant
+ * list" reasoning requireOwner already encodes. Identity is member_handles
+ * (display name/handle) + email only — never member_profiles' legal name /
+ * DOB / address, which RLS locks to the profile's own owner and has no
+ * business being shown to a co-worker.
+ */
+export async function staffTeamOverview(
+  db: Db,
+  userId: string,
+  programmeId: string,
+): Promise<StaffTeamOverview> {
+  const { data: callerRow } = await db
+    .from("programme_staff")
+    .select("role")
+    .eq("programme_id", programmeId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!callerRow) throw new Error("You do not have permission to do that");
+  const canManage = String((callerRow as Row)["role"]) === "owner";
+
+  const service = await adminDb();
+  const [{ data: staffRows }, { data: inviteRows }] = await Promise.all([
+    service.from("programme_staff").select("*").eq("programme_id", programmeId).order("created_at"),
+    service
+      .from("programme_invites")
+      .select("*")
+      .eq("programme_id", programmeId)
+      .eq("kind", "staff")
+      .is("accepted_at", null)
+      .order("created_at", { ascending: false }),
+  ]);
+
+  const rows = (staffRows ?? []) as Row[];
+  const memberIds = rows.map((r) => String(r["user_id"]));
+  const [{ data: handles }, { data: profiles }] = await Promise.all([
+    memberIds.length
+      ? service
+          .from("member_handles")
+          .select("user_id, handle, display_name")
+          .in("user_id", memberIds)
+      : Promise.resolve({ data: [] as Row[] }),
+    memberIds.length
+      ? service.from("member_profiles").select("user_id, email").in("user_id", memberIds)
+      : Promise.resolve({ data: [] as Row[] }),
+  ]);
+  const handleBy = new Map(((handles ?? []) as Row[]).map((h) => [String(h["user_id"]), h]));
+  const emailBy = new Map(
+    ((profiles ?? []) as Row[]).map((p) => [String(p["user_id"]), s(p, "email")]),
+  );
+
+  const members: StaffTeamMember[] = rows.map((r) => {
+    const uid = String(r["user_id"]);
+    const handle = handleBy.get(uid);
+    const displayName = handle ? String(handle["display_name"] ?? "").trim() : "";
+    return {
+      userId: uid,
+      displayName: displayName || (handle ? String(handle["handle"] ?? "") : "") || "Shekk member",
+      handle: handle ? s(handle, "handle") : null,
+      email: emailBy.get(uid) ?? null,
+      role: String(r["role"]) as StaffRole,
+      permissions: ((r["permissions"] ?? []) as string[]).map(String) as StaffPermission[],
+      isSelf: uid === userId,
+      createdAt: String(r["created_at"]),
+    };
+  });
+
+  const invites: StaffTeamInvite[] = ((inviteRows ?? []) as Row[]).map((i) => ({
+    id: String(i["id"]),
+    email: s(i, "email"),
+    role: String(i["role"]) as StaffRole,
+    code: String(i["code"]),
+    note: s(i, "note"),
+    createdAt: String(i["created_at"]),
+    expiresAt: s(i, "expires_at"),
+    expired: Boolean(i["expires_at"] && new Date(String(i["expires_at"])) < new Date()),
+  }));
+
+  return {
+    programmeId,
+    canManage,
+    members,
+    invites,
+    ownerCount: members.filter((m) => m.role === "owner").length,
+  };
+}
+
+/**
+ * Reuses the invite/accept engine previewInvite/acceptInvite and Join.tsx's
+ * JoinPanel already run for programme-claim invites — a staff invite is the
+ * same table, same code namespace, same acceptance UI, just kind: "staff"
+ * instead of "claim". No new invite/accept flow, no email sending (nothing
+ * in the app sends transactional invite email yet; the link is returned for
+ * the owner to share, same as adminCreateInvite's existing behaviour).
+ */
+export async function staffInviteTeamMember(
+  db: Db,
+  userId: string,
+  programmeId: string,
+  input: { email: string; role: StaffRole; note: string | null },
+): Promise<{ code: string; path: string }> {
+  await requireOwner(db, userId, programmeId);
+  const service = await adminDb();
+  const email = input.email.trim();
+
+  const { data: existingProfile } = await service
+    .from("member_profiles")
+    .select("user_id")
+    .ilike("email", email)
+    .maybeSingle();
+  if (existingProfile) {
+    const existingUserId = String((existingProfile as Row)["user_id"]);
+    const { data: alreadyStaff } = await service
+      .from("programme_staff")
+      .select("user_id")
+      .eq("programme_id", programmeId)
+      .eq("user_id", existingUserId)
+      .maybeSingle();
+    if (alreadyStaff) throw new Error("That person is already on your team.");
+  }
+
+  // Reuse a still-valid pending invite for the same email rather than
+  // stacking duplicates; a stale/expired one is cleared so a fresh one can
+  // replace it below.
+  const { data: pending } = await service
+    .from("programme_invites")
+    .select("*")
+    .eq("programme_id", programmeId)
+    .eq("kind", "staff")
+    .ilike("email", email)
+    .is("accepted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (pending) {
+    const p = pending as Row;
+    const stillValid = !p["expires_at"] || new Date(String(p["expires_at"])) >= new Date();
+    if (stillValid) {
+      const code = String(p["code"]);
+      return { code, path: `/join/${code}` };
+    }
+    await service.from("programme_invites").delete().eq("id", p["id"]);
+  }
+
+  const code = randomCode("STAFF-", 8);
+  const expires = new Date(Date.now() + 30 * 86_400_000).toISOString();
+  const { error } = await service.from("programme_invites").insert({
+    programme_id: programmeId,
+    kind: "staff",
+    role: input.role,
+    code,
+    email,
+    note: input.note,
+    expires_at: expires,
+    created_by: userId,
+  } as never);
+  if (error) throw new Error(error.message || "We couldn't create that invite");
+  return { code, path: `/join/${code}` };
+}
+
+/** A programme must always keep at least one owner — refuses to demote or
+ *  remove the last one, whether that's the caller acting on themselves or
+ *  on someone else. */
+async function assertNotLastOwner(service: Db, programmeId: string, excludingUserId: string) {
+  const { data: owners } = await service
+    .from("programme_staff")
+    .select("user_id")
+    .eq("programme_id", programmeId)
+    .eq("role", "owner");
+  const remaining = ((owners ?? []) as Row[]).filter(
+    (o) => String(o["user_id"]) !== excludingUserId,
+  );
+  if (remaining.length === 0) {
+    throw new Error("A programme needs at least one owner — make someone else an owner first.");
+  }
+}
+
+export async function staffUpdateTeamMember(
+  db: Db,
+  userId: string,
+  programmeId: string,
+  targetUserId: string,
+  patch: { role?: StaffRole; permissions?: StaffPermission[] },
+): Promise<{ ok: true }> {
+  await requireOwner(db, userId, programmeId);
+  const service = await adminDb();
+
+  const { data: existing } = await service
+    .from("programme_staff")
+    .select("role")
+    .eq("programme_id", programmeId)
+    .eq("user_id", targetUserId)
+    .maybeSingle();
+  if (!existing) throw new Error("That person is no longer on your team.");
+  const currentRole = String((existing as Row)["role"]) as StaffRole;
+
+  if (patch.role && patch.role !== currentRole && currentRole === "owner") {
+    await assertNotLastOwner(service, programmeId, targetUserId);
+  }
+
+  const update: Row = { updated_at: new Date().toISOString() };
+  if (patch.role) update["role"] = patch.role;
+  if (patch.permissions) update["permissions"] = patch.permissions;
+
+  const { error } = await service
+    .from("programme_staff")
+    .update(update as never)
+    .eq("programme_id", programmeId)
+    .eq("user_id", targetUserId);
+  if (error) throw new Error(error.message || "We couldn't update that team member");
+  return { ok: true };
+}
+
+export async function staffRemoveTeamMember(
+  db: Db,
+  userId: string,
+  programmeId: string,
+  targetUserId: string,
+): Promise<{ ok: true }> {
+  await requireOwner(db, userId, programmeId);
+  const service = await adminDb();
+
+  const { data: existing } = await service
+    .from("programme_staff")
+    .select("role")
+    .eq("programme_id", programmeId)
+    .eq("user_id", targetUserId)
+    .maybeSingle();
+  if (!existing) return { ok: true };
+  if (String((existing as Row)["role"]) === "owner") {
+    await assertNotLastOwner(service, programmeId, targetUserId);
+  }
+
+  // No FK from events/announcements/checklist created_by|changed_by|
+  // updated_by to programme_staff (they're plain uuid columns, no
+  // REFERENCES) — removing someone's access never cascades into deleting
+  // anything they created or changed.
+  const { error } = await service
+    .from("programme_staff")
+    .delete()
+    .eq("programme_id", programmeId)
+    .eq("user_id", targetUserId);
+  if (error) throw new Error(error.message || "We couldn't remove that team member");
+  return { ok: true };
+}
+
+/**
+ * programmeId isn't a parameter here on purpose — same reasoning as
+ * deleteContent: the invite row's own programme_id (read below) is the only
+ * thing permission gets checked against, so a client-supplied programmeId
+ * next to someone else's invite id can never influence which programme's
+ * ownership gets checked.
+ */
+export async function staffRevokeTeamInvite(
+  db: Db,
+  userId: string,
+  inviteId: string,
+): Promise<{ ok: true }> {
+  const service = await adminDb();
+  const { data: existing } = await service
+    .from("programme_invites")
+    .select("programme_id")
+    .eq("id", inviteId)
+    .maybeSingle();
+  if (!existing) return { ok: true };
+  const programmeId = String((existing as Row)["programme_id"]);
+  await requireOwner(db, userId, programmeId);
+
+  const { error } = await service
+    .from("programme_invites")
+    .delete()
+    .eq("id", inviteId)
+    .is("accepted_at", null);
+  if (error) throw new Error(error.message || "We couldn't revoke that invite");
+  return { ok: true };
 }
 
 /* ─────────────────────────── Internal Shekk admin ────────────────────────── */

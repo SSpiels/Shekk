@@ -1119,6 +1119,43 @@ export type StaffContentOverview = {
 };
 
 /**
+ * Programme OS: Team. Identity here is deliberately thin — member_handles'
+ * display name/handle plus email, never member_profiles' legal name / DOB /
+ * address (KYC-adjacent PII, RLS-locked to the owner of that row alone) —
+ * the same restraint staffStudentRoster already uses for students.
+ */
+export type StaffTeamMember = {
+  userId: string;
+  displayName: string;
+  handle: string | null;
+  email: string | null;
+  role: StaffRole;
+  permissions: StaffPermission[];
+  isSelf: boolean;
+  createdAt: string;
+};
+
+export type StaffTeamInvite = {
+  id: string;
+  email: string | null;
+  role: StaffRole;
+  code: string;
+  note: string | null;
+  createdAt: string;
+  expiresAt: string | null;
+  expired: boolean;
+};
+
+export type StaffTeamOverview = {
+  programmeId: string;
+  /** Whether the caller can invite/edit/remove — an owner, not just any staff. */
+  canManage: boolean;
+  members: StaffTeamMember[];
+  invites: StaffTeamInvite[];
+  ownerCount: number;
+};
+
+/**
  * Given an event's audience and the cohort roster, split eligible members
  * into going/maybe/not-going/no-response. "No response" is an eligible
  * member with no programme_event_rsvps row at all — never confused with

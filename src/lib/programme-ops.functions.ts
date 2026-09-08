@@ -13,7 +13,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { isSafeContentUrl } from "@/lib/programme/logic";
+import { isSafeContentUrl, STAFF_PERMISSIONS } from "@/lib/programme/logic";
 
 /* ────────────────────────────────── Schemas ───────────────────────────────── */
 
@@ -599,6 +599,81 @@ export const staffCohortInvite = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { cohortInviteDetails } = await import("@/lib/programme-ops.server");
     return cohortInviteDetails(context.supabase, context.userId, data.cohortId);
+  });
+
+/* ─────────────────────────────── Programme OS: Team ────────────────────────── */
+
+export const staffTeamOverview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ programmeId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffTeamOverview: overview } = await import("@/lib/programme-ops.server");
+    return overview(context.supabase, context.userId, data.programmeId);
+  });
+
+const staffInviteInput = z.object({
+  programmeId: uuid,
+  email: z.string().trim().email().max(160),
+  role: z.enum(["owner", "staff"]),
+  note: text(300),
+});
+
+export const staffTeamInvite = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => {
+    // Same reasoning as staffUpsertContent above: an invalid email is
+    // something a staff member can genuinely type, so it gets a clean
+    // message instead of a raw ZodError's JSON issues array.
+    const result = staffInviteInput.safeParse(d);
+    if (!result.success) {
+      throw new Error(result.error.issues[0]?.message || "That doesn't look right.");
+    }
+    return result.data;
+  })
+  .handler(async ({ data, context }) => {
+    const { staffInviteTeamMember } = await import("@/lib/programme-ops.server");
+    return staffInviteTeamMember(context.supabase, context.userId, data.programmeId, {
+      email: data.email,
+      role: data.role,
+      note: data.note ?? null,
+    });
+  });
+
+export const staffTeamUpdateMember = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .object({
+        programmeId: uuid,
+        userId: uuid,
+        role: z.enum(["owner", "staff"]).optional(),
+        permissions: z.array(z.enum(STAFF_PERMISSIONS)).max(STAFF_PERMISSIONS.length).optional(),
+      })
+      .refine((v) => v.role !== undefined || v.permissions !== undefined, "Nothing to change")
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { staffUpdateTeamMember } = await import("@/lib/programme-ops.server");
+    return staffUpdateTeamMember(context.supabase, context.userId, data.programmeId, data.userId, {
+      ...(data.role ? { role: data.role } : {}),
+      ...(data.permissions ? { permissions: data.permissions } : {}),
+    });
+  });
+
+export const staffTeamRemoveMember = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ programmeId: uuid, userId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffRemoveTeamMember } = await import("@/lib/programme-ops.server");
+    return staffRemoveTeamMember(context.supabase, context.userId, data.programmeId, data.userId);
+  });
+
+export const staffTeamRevokeInvite = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ inviteId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffRevokeTeamInvite } = await import("@/lib/programme-ops.server");
+    return staffRevokeTeamInvite(context.supabase, context.userId, data.inviteId);
   });
 
 /* ───────────────────────────── Internal Shekk admin ───────────────────────── */

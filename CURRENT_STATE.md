@@ -1,9 +1,9 @@
 # Current state
 
 **Last audited:** 2026-09-08
-**Branch audited:** `feature/programme-os-v1`; Content data-integrity &
-security checkpoint, after the Content module checkpoint, after the
-date-stabilisation checkpoint (`ade0992`).
+**Branch audited:** `feature/programme-os-v1`; Team checkpoint, after the
+Content data-integrity & security checkpoint, after the Content module
+checkpoint, after the date-stabilisation checkpoint (`ade0992`).
 
 This is the only document in this set that's expected to go stale — treat it
 as a snapshot, not a guarantee. If you find it disagrees with the code, trust
@@ -50,7 +50,7 @@ session context are **implemented**. Per V1 module:
 | Communications | **Implemented, DB-backed** | Publishing, audience targeting, acknowledgement rollups and eligible-student drill-down using the existing announcement engine. Notifications are in-app only. |
 | Calendar | **Implemented, DB-backed** | Agenda/Week/Month, create/edit/delete, delay/move/cancel, change history and audience-aware RSVP breakdown using the existing event engine. |
 | Content | **Implemented, DB-backed** | `staff/content.tsx` — welcome message, checklist, documents, contacts and places, create/edit/delete, on the existing content/audience engine. See "Content module" below. |
-| Team | **Stub/placeholder** | Placeholder text explicitly says it's planned for "Phase 4 — built on the existing owner \| staff + permissions model." |
+| Team | **Implemented, DB-backed** | `staff/team.tsx` — roster, invite, role/permissions, remove, on the existing `programme_staff`/`programme_invites` schema. See "Team checkpoint" below. |
 | Settings | **Stub/placeholder** | Same pattern as the above. |
 
 ### Programme date handling checkpoint
@@ -204,6 +204,82 @@ five tabs, same engine; this closed specific gaps found on review.
   both came back exactly as before — then reverted the tick to leave the
   sandbox as found. Separately confirmed the `javascript:` link rejection
   live, as above.
+
+### Team checkpoint
+
+`staff/team.tsx` replaces the Phase-4 placeholder. Built entirely on the
+schema that already existed for it (`programme_staff`, `programme_invites`)
+and the invite/accept engine every staff-claim invite already ran through
+(`previewInvite`/`acceptInvite`, `Join.tsx`'s `JoinPanel`) — no new tables,
+no new accept flow, no invite email (nothing in the app sends transactional
+invite email anywhere; the link is returned for an owner to copy/share, the
+same as `adminCreateInvite`'s existing behaviour).
+
+- **New, owner-gated server functions**: `staffTeamOverview` (read — open to
+  any staff member, not just owners, same "Content is staff-readable"
+  precedent), `staffInviteTeamMember`, `staffUpdateTeamMember` (role and/or
+  permissions — no permissions setter existed anywhere before this),
+  `staffRemoveTeamMember`, `staffRevokeTeamInvite`. All gated by the
+  `requireOwner`/`is_programme_owner` helper that already existed in
+  `programme-ops.server.ts`, unused, since the schema/RLS layer was built —
+  'team' was deliberately left out of `staff_can`'s default-permission-grant
+  list in the DB, the codebase's own signal that team management was always
+  meant to be owner-only, not staff-permission-gated like Content/Calendar/
+  Communications. No schema change, no new `STAFF_PERMISSIONS` entry.
+- **The only pre-existing write paths that touched these two tables**
+  (`adminCreateInvite`, `adminSetStaffRole`, `adminRemoveStaff`,
+  `adminRevokeInvite`, `adminAssignOwnerByEmail`) are the internal Shekk
+  admin console's, gated by `assertAdmin` for a *different* surface
+  (`/admin`, not `/staff`) and taking a raw `programmeId` with no per-caller
+  scoping — reusing them for Programme OS would have hardcoded Shekk-admin
+  power into every programme owner's account. Left entirely untouched; Team
+  has its own, narrower functions instead.
+- **Last-owner protection** (didn't exist anywhere before this):
+  `assertNotLastOwner` blocks demoting or removing a programme's only owner,
+  whether the caller is acting on someone else or on themselves. Checked
+  server-side (the actual gate) and mirrored client-side in the editor
+  dialog for an immediate, no-round-trip message.
+- **Duplicate-invite handling**: inviting an email with an existing,
+  still-valid pending invite reuses its code instead of creating a second
+  row; an expired pending invite is cleared and replaced. Inviting someone
+  whose email already resolves to a current team member is rejected
+  outright ("already on your team") rather than issuing a pointless invite.
+- **Cross-programme write safety**: `staffUpdateTeamMember`/
+  `staffRemoveTeamMember` scope every write by the compound
+  `(programme_id, user_id)` key (`programme_staff` has no single-column
+  primary key staff can be looked up by alone), so a caller who really does
+  own the programme they claim can't affect a different programme's row —
+  the compound key matches zero rows or the right one, never someone
+  else's. `staffRevokeTeamInvite` takes no `programmeId` argument at all;
+  the invite row's own `programme_id` (read first) is the only thing
+  ownership gets checked against, the same re-derive-from-the-row pattern
+  Content's `deleteContent` uses.
+- **Identity shown is deliberately thin**: `member_handles` (display name/
+  handle) + `member_profiles.email` only — never legal name, DOB, address or
+  any other `member_profiles` field, which RLS locks to the profile's own
+  owner and has no business reaching a co-worker's screen.
+- **Removing someone with existing programme activity is safe already**:
+  `created_by`/`updated_by`/`changed_by` columns across events, announcements,
+  checklist items etc. are plain `uuid`, never a foreign key to
+  `programme_staff` — removing access never cascades into deleting anything
+  that person created or changed. The remove-confirmation copy says so.
+- Verification: 249 tests pass (228 prior + 21 new in
+  `src/lib/programme/team.test.ts` — last-owner guard for both update and
+  remove, both blocked and allowed cases; duplicate/expired/already-a-member
+  invite handling; cross-programme permission checks for every write
+  function; no-op-on-already-gone for remove/revoke; safe-identity-fields
+  shape and `canManage` gating for the overview read), typecheck and
+  changed-line lint pass, production build passes. Live-verified in Shekk
+  Test Programme: invited a test email, confirmed the dedup returned the
+  same code on a second attempt, revoked it and watched the pending-invites
+  section clear, and confirmed the last-owner guard blocks self-demotion
+  both in the UI (immediate, no server round trip) and would be blocked
+  server-side regardless (unit-tested directly, since the sandbox only has
+  one owner to test against). Sandbox restored to its original single-owner,
+  no-pending-invite state afterward.
+- Known limits: no bulk invite/CSV import, no custom roles beyond
+  owner/staff, no email delivery (link-sharing is manual, matching every
+  other invite path in the app).
 
 There is an internal **Shekk testing sandbox** programme
 (`src/lib/programme-testbed.server.ts`, `src/lib/programme-ops.functions.ts`)
