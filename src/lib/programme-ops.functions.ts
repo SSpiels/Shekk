@@ -488,10 +488,10 @@ export const staffStudentProfile = createServerFn({ method: "POST" })
 
 export const staffOverview = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => z.object({ cohortId: uuid }).parse(d))
+  .inputValidator((d: unknown) => z.object({ cohortId: uuid, programmeId: uuid.optional() }).parse(d))
   .handler(async ({ data, context }) => {
     const { staffOverview: overview } = await import("@/lib/programme-ops.server");
-    return overview(context.supabase, context.userId, data.cohortId);
+    return overview(context.supabase, context.userId, data.cohortId, data.programmeId);
   });
 
 /* ─────────────────────────────── Programme OS: Onboarding ────────────────────────── */

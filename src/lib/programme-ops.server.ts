@@ -60,7 +60,9 @@ import {
   type StaffOnboardingOverview,
   type StaffOnboardingStudent,
   type StaffOverviewAnnouncement,
+  type StaffOverviewChange,
   type StaffOverviewEvent,
+  type StaffOverviewTeam,
   type StaffPermission,
   type StaffRole,
   type StaffSession,
@@ -2087,28 +2089,89 @@ export async function staffOverview(
   db: Db,
   userId: string,
   cohortId: string,
+  /** Team's numbers are programme-, not cohort-, scoped — omit to leave
+   *  `team` null (e.g. a caller that hasn't resolved a workspace yet). */
+  programmeId?: string,
 ): Promise<{
   onboarding: StaffOnboardingOverview;
   upcomingEvents: StaffOverviewEvent[];
   recentAnnouncements: StaffOverviewAnnouncement[];
+  recentChanges: StaffOverviewChange[];
+  team: StaffOverviewTeam | null;
 }> {
-  const [onboarding, { data: events }, { data: announcements }] = await Promise.all([
-    staffOnboardingOverview(db, userId, cohortId),
-    db
-      .from("programme_events")
-      .select("id, title, starts_at, location_label")
-      .eq("cohort_id", cohortId)
-      .gte("starts_at", new Date().toISOString())
-      .order("starts_at")
-      .limit(5),
-    db
-      .from("programme_announcements")
-      .select("id, title, published_at, pinned")
-      .eq("cohort_id", cohortId)
-      .order("pinned", { ascending: false })
-      .order("published_at", { ascending: false })
-      .limit(3),
-  ]);
+  const [onboarding, { data: events }, { data: announcements }, { data: changeRows }] =
+    await Promise.all([
+      staffOnboardingOverview(db, userId, cohortId),
+      db
+        .from("programme_events")
+        .select("id, title, starts_at, location_label")
+        .eq("cohort_id", cohortId)
+        .gte("starts_at", new Date().toISOString())
+        .order("starts_at")
+        .limit(5),
+      db
+        .from("programme_announcements")
+        .select("id, title, published_at, pinned")
+        .eq("cohort_id", cohortId)
+        .order("pinned", { ascending: false })
+        .order("published_at", { ascending: false })
+        .limit(3),
+      // Real, already-recorded change rows (Calendar's own change history) —
+      // not a derived "activity feed". Silent changes (e.g. a semantic no-op
+      // resave) are excluded; those were never meant to surface to anyone.
+      db
+        .from("programme_event_changes")
+        .select("id, event_id, field, notify_level, changed_at")
+        .eq("cohort_id", cohortId)
+        .neq("notify_level", "silent")
+        .order("changed_at", { ascending: false })
+        .limit(3),
+    ]);
+
+  const changeRowsArr = (changeRows ?? []) as Row[];
+  const changedEventIds = [...new Set(changeRowsArr.map((c) => String(c["event_id"])))];
+  const { data: changedEvents } = changedEventIds.length
+    ? await db.from("programme_events").select("id, title").in("id", changedEventIds)
+    : { data: [] as Row[] };
+  const eventTitleById = new Map(
+    ((changedEvents ?? []) as Row[]).map((e) => [String(e["id"]), String(e["title"])]),
+  );
+
+  const recentChanges: StaffOverviewChange[] = changeRowsArr.map((c) => ({
+    id: String(c["id"]),
+    eventId: String(c["event_id"]),
+    eventTitle: eventTitleById.get(String(c["event_id"])) ?? "Event",
+    field: String(c["field"]),
+    notifyLevel: String(c["notify_level"]) as NotifyLevel,
+    changedAt: String(c["changed_at"]),
+  }));
+
+  let team: StaffOverviewTeam | null = null;
+  if (programmeId) {
+    // RLS already covers both of these for the caller's own client:
+    // programme_staff is staff-readable, and programme_invites' SELECT
+    // policy is owner-only (20260908150000) — a non-owner's own query
+    // simply returns nothing, so canManage doubles as "was it worth asking".
+    const { data: staffRows } = await db
+      .from("programme_staff")
+      .select("user_id, role")
+      .eq("programme_id", programmeId);
+    const rows = (staffRows ?? []) as Row[];
+    const canManage = rows.some(
+      (r) => String(r["user_id"]) === userId && String(r["role"]) === "owner",
+    );
+    let pendingInvites = 0;
+    if (canManage) {
+      const { count } = await db
+        .from("programme_invites")
+        .select("id", { count: "exact", head: true })
+        .eq("programme_id", programmeId)
+        .eq("kind", "staff")
+        .is("accepted_at", null);
+      pendingInvites = count ?? 0;
+    }
+    team = { memberCount: rows.length, pendingInvites, canManage };
+  }
 
   return {
     onboarding,
@@ -2124,6 +2187,8 @@ export async function staffOverview(
       publishedAt: String(a["published_at"]),
       pinned: Boolean(a["pinned"]),
     })),
+    recentChanges,
+    team,
   };
 }
 
@@ -2534,15 +2599,21 @@ export async function staffTeamOverview(
   const canManage = String((callerRow as Row)["role"]) === "owner";
 
   const service = await adminDb();
+  // Invitation codes are a strictly owner-only read (see the RLS policy
+  // narrowing in 20260908150000) — this mirrors that at the application
+  // layer too, since this function uses the service role and would
+  // otherwise bypass it. A non-owner never even triggers the query.
   const [{ data: staffRows }, { data: inviteRows }] = await Promise.all([
     service.from("programme_staff").select("*").eq("programme_id", programmeId).order("created_at"),
-    service
-      .from("programme_invites")
-      .select("*")
-      .eq("programme_id", programmeId)
-      .eq("kind", "staff")
-      .is("accepted_at", null)
-      .order("created_at", { ascending: false }),
+    canManage
+      ? service
+          .from("programme_invites")
+          .select("*")
+          .eq("programme_id", programmeId)
+          .eq("kind", "staff")
+          .is("accepted_at", null)
+          .order("created_at", { ascending: false })
+      : Promise.resolve({ data: [] as Row[] }),
   ]);
 
   const rows = (staffRows ?? []) as Row[];

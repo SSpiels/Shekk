@@ -5,7 +5,7 @@
  * know whether to go check those.
  */
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { CheckSquare, LayoutDashboard, Megaphone, Users } from "lucide-react";
+import { CheckSquare, Clock, LayoutDashboard, Megaphone, UserCog, Users } from "lucide-react";
 import { Card } from "@/components/AppShell";
 import { EmptyState, ErrorState, LoadingBlocks, MicroLabel, ProgressBar } from "@/components/Kit";
 import { useStaffOS } from "@/components/staff/StaffSessionContext";
@@ -32,7 +32,8 @@ export const Route = createFileRoute("/staff/overview")({
 function StaffOverview() {
   const { activeWorkspace } = useStaffOS();
   const cohortId = activeWorkspace?.cohort?.id ?? null;
-  const { data, isLoading, error, refetch } = useStaffOverview(cohortId);
+  const programmeId = activeWorkspace?.programmeId ?? null;
+  const { data, isLoading, error, refetch } = useStaffOverview(cohortId, programmeId);
 
   if (!cohortId) {
     return (
@@ -55,7 +56,7 @@ function StaffOverview() {
   }
   if (!data) return null;
 
-  const { onboarding, upcomingEvents, recentAnnouncements } = data;
+  const { onboarding, upcomingEvents, recentAnnouncements, recentChanges, team } = data;
   const needsAttention = onboarding.statusCounts.needs_attention;
 
   return (
@@ -154,6 +155,62 @@ function StaffOverview() {
             </div>
           )}
         </Card>
+
+        <Card className="space-y-2.5">
+          <div className="flex items-center justify-between">
+            <MicroLabel className="text-muted-foreground">Recent changes</MicroLabel>
+            <Link to="/staff/calendar" className="text-[12px] font-semibold text-primary">
+              View all
+            </Link>
+          </div>
+          {recentChanges.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nothing's changed recently.</p>
+          ) : (
+            <div className="space-y-2">
+              {recentChanges.map((c) => (
+                <div key={c.id} className="flex items-start justify-between gap-2">
+                  <span className="min-w-0 truncate text-sm">
+                    <span className="font-semibold">{c.eventTitle}</span>
+                    <span className="text-muted-foreground">
+                      {" "}
+                      · {c.field === "status" ? "status" : c.field.replace(/_/g, " ")}
+                      {c.notifyLevel === "urgent" ? " (urgent)" : ""}
+                    </span>
+                  </span>
+                  <span className="shrink-0 whitespace-nowrap text-[11.5px] text-muted-foreground">
+                    {fmtDate(c.changedAt)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        {team ? (
+          <Link to="/staff/team" className="block">
+            <Card className="space-y-2.5">
+              <div className="flex items-center justify-between">
+                <MicroLabel className="text-muted-foreground">Team</MicroLabel>
+                <span className="text-[12px] font-semibold text-primary">View all</span>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <UserCog className="size-5 text-primary" />
+                <p className="text-sm">
+                  <span className="font-semibold">
+                    {team.memberCount} {team.memberCount === 1 ? "person" : "people"}
+                  </span>
+                  <span className="text-muted-foreground"> with access</span>
+                </p>
+              </div>
+              {team.canManage && team.pendingInvites > 0 ? (
+                <p className="flex items-center gap-1.5 text-[12.5px] font-semibold text-warning">
+                  <Clock className="size-3.5" />
+                  {team.pendingInvites} pending invite{team.pendingInvites === 1 ? "" : "s"}
+                </p>
+              ) : null}
+            </Card>
+          </Link>
+        ) : null}
       </div>
     </div>
   );

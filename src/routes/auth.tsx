@@ -19,14 +19,14 @@ export const Route = createFileRoute("/auth")({
   validateSearch: (s: Record<string, unknown>) => ({ next: safeNext(s.next) }),
   head: () => ({
     meta: [
-      { title: "Join Shekk · one wallet for your year in Israel" },
+      { title: "Join Shekk · everything for your year in Israel" },
       {
         name: "description",
         content:
-          "Create your Shekk account: shekels, a Shekk card, split bills and your programme in one app. Sign up with Google or email in under a minute.",
+          "Create your Shekk account: your programme, arrival essentials and daily life in Israel, all in one app. Sign up with Google or email in under a minute.",
       },
       { property: "og:title", content: "Join Shekk" },
-      { property: "og:description", content: "One wallet for your year in Israel." },
+      { property: "og:description", content: "Everything for your year in Israel." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
     ],
@@ -35,9 +35,9 @@ export const Route = createFileRoute("/auth")({
 });
 
 const PROMISES = [
-  "Money in shekels, funded from your home currency",
   "Your programme timetable, contacts and checklist",
   "The arrival admin and daily life, in one place",
+  "Events, places and the practical stuff sorted",
 ];
 
 /**

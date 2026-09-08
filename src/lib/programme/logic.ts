@@ -812,6 +812,28 @@ export type StaffOverviewAnnouncement = {
   pinned: boolean;
 };
 
+/** A real, already-recorded change (delay/move/cancel/etc.) from
+ *  programme_event_changes — not a derived "activity feed", the same rows
+ *  Calendar's own change history shows, just the newest non-silent few. */
+export type StaffOverviewChange = {
+  id: string;
+  eventId: string;
+  eventTitle: string;
+  field: string;
+  notifyLevel: NotifyLevel;
+  changedAt: string;
+};
+
+/** Team's own headline numbers, cheap enough to show on Overview without
+ *  running staffTeamOverview's full roster/invite/identity join. */
+export type StaffOverviewTeam = {
+  memberCount: number;
+  /** Only meaningful (and only shown) when the viewer can manage — a
+   *  non-owner has no action to take on someone else's pending invite. */
+  pendingInvites: number;
+  canManage: boolean;
+};
+
 /* ─────────────────────── Communications (Programme OS staff view) ──────────────────────
  * Built directly on the announcement/audience/acknowledgement engine the
  * mobile hub already uses (ProgrammeAnnouncementRow, Audience,

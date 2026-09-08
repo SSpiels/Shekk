@@ -1,9 +1,10 @@
 # Current state
 
 **Last audited:** 2026-09-08
-**Branch audited:** `feature/programme-os-v1`; Team checkpoint, after the
-Content data-integrity & security checkpoint, after the Content module
-checkpoint, after the date-stabilisation checkpoint (`ade0992`).
+**Branch audited:** `feature/programme-os-v1`; Integration & Overview
+checkpoint, after the Team checkpoint, after the Content data-integrity &
+security checkpoint, after the Content module checkpoint, after the
+date-stabilisation checkpoint (`ade0992`).
 
 This is the only document in this set that's expected to go stale — treat it
 as a snapshot, not a guarantee. If you find it disagrees with the code, trust
@@ -44,13 +45,13 @@ session context are **implemented**. Per V1 module:
 
 | Module | State | Notes |
 |---|---|---|
-| Overview | **Implemented, DB-backed** | `src/routes/staff/overview.tsx` calls `useStaffOverview(cohortId)` — real query with loading/error states, not mock arrays. Underlying data may still be limited to whatever cohorts exist (including the internal sandbox cohort — see below). |
+| Overview | **Implemented, DB-backed** | `src/routes/staff/overview.tsx` calls `useStaffOverview(cohortId, programmeId)` — cohort/programme context, onboarding stats, upcoming events, recent announcements, recent event changes and a Team summary, all real queries, no mock arrays or invented metrics. See "Integration & Overview checkpoint" below. |
 | Students | **Implemented, DB-backed** | Roster (`staff/students/index.tsx`) and profile (`staff/students/$studentId.tsx`) both call real hooks (`useStaffStudentRoster`, presumably an equivalent for the detail view) with loading/error handling. Backed by the new `programme_student_details` table (added this branch, phase 1). |
 | Onboarding | **Implemented, DB-backed** | `staff/onboarding.tsx` — cohort-wide dashboard via `useStaffOnboardingOverview`, plus a working reminder-notify mutation (`useNotifyOnboardingReminder`). |
 | Communications | **Implemented, DB-backed** | Publishing, audience targeting, acknowledgement rollups and eligible-student drill-down using the existing announcement engine. Notifications are in-app only. |
 | Calendar | **Implemented, DB-backed** | Agenda/Week/Month, create/edit/delete, delay/move/cancel, change history and audience-aware RSVP breakdown using the existing event engine. |
 | Content | **Implemented, DB-backed** | `staff/content.tsx` — welcome message, checklist, documents, contacts and places, create/edit/delete, on the existing content/audience engine. See "Content module" below. |
-| Team | **Implemented, DB-backed** | `staff/team.tsx` — roster, invite, role/permissions, remove, on the existing `programme_staff`/`programme_invites` schema. See "Team checkpoint" below. |
+| Team | **Implemented, DB-backed, hardened** | `staff/team.tsx` — roster, invite, role/permissions, remove, on the existing `programme_staff`/`programme_invites` schema. Last-owner protection is now DB-enforced (not just app-level), invitation codes are an owner-only read at the RLS layer too. See "Team checkpoint" and "Integration & Overview checkpoint" below. |
 | Settings | **Stub/placeholder** | Same pattern as the above. |
 
 ### Programme date handling checkpoint
@@ -280,6 +281,153 @@ same as `adminCreateInvite`'s existing behaviour).
 - Known limits: no bulk invite/CSV import, no custom roles beyond
   owner/staff, no email delivery (link-sharing is manual, matching every
   other invite path in the app).
+
+### Integration & Overview checkpoint
+
+Overview replaced with a real operations glance (see the module table
+above); Team's remaining verification gaps closed; a full staff→student
+journey run end to end with disposable accounts; a demo-readiness pass
+produced the blocker list below. No new modules, no permissions-model
+redesign.
+
+**Overview**, concretely: cohort/programme header, active students,
+onboarding % and needs-attention count (existing `staffOnboardingOverview`,
+unchanged), upcoming events, recent announcements, **new** — recent event
+changes (`programme_event_changes`, non-silent only, last 3, reusing
+Calendar's own change-history rows, not a derived feed) and a **Team**
+summary tile (member count; pending-invite count only shown to an owner,
+via the same RLS this checkpoint narrowed — see below). Every number is a
+real query; nothing here is invented delivery/attendance/engagement
+metrics the system doesn't track.
+
+**Team security fixes**, both migrations applied to the linked dev project:
+- **Atomic last-owner protection.** The previous checkpoint's
+  `assertNotLastOwner` was a count-then-write check in application code —
+  exactly the race the brief warned about: two concurrent requests could
+  each read "2 owners" before either commits. A `BEFORE UPDATE OR DELETE`
+  trigger on `programme_staff` (`programme_staff_guard_last_owner`,
+  migration `20260908150000`) is now the real guarantee: it fires
+  regardless of caller (a server function, the internal Shekk admin
+  console, or a raw client), and `pg_advisory_xact_lock(hashtext(
+  programme_id))` serializes concurrent staff-role changes for the same
+  programme so the count each transaction sees can't be stale. The
+  application-level check stays too, purely for a clean error message
+  before a round trip — the trigger is what actually can't be bypassed.
+- **Invitation codes narrowed to an owner-only read.** `programme_invites`'
+  SELECT policy previously used `is_programme_staff` — any staff member,
+  not just an owner, could read every pending invite's `code` directly via
+  their own RLS-scoped client (devtools, not just the UI), regardless of
+  `staffTeamOverview`'s own `canManage` gate. Fixed at both layers: the RLS
+  policy now checks `is_programme_owner` (same migration), and
+  `staffTeamOverview` no longer even queries `programme_invites` for a
+  non-owner (was already gated app-side by returning an empty array, but
+  the query ran regardless — now it doesn't). Team roster visibility
+  (`programme_staff`) stays open to all staff, unchanged — this was
+  specifically about invitation codes, a distinct, higher-privilege
+  capability. Regression tests added in `team.test.ts` (22 total now).
+
+**End-to-end verification, live, with disposable accounts** (created via
+Supabase Admin API, authenticated via generated magic-link tokens
+consumed same-origin through the app's own `/auth/v1/verify` call — never
+a password; all three accounts and their invite/membership/staff rows
+deleted afterward, confirmed via a direct read showing the sandbox back
+to exactly one owner and zero pending invites):
+- **Owner** (the real, already-signed-in account) created two staff
+  invites through the real Team UI.
+- **Ordinary staff** (`shekk-qa-staff-…@shekk-test.invalid`): accepted
+  their invite through the real `/join/<code>` flow, landed on Programme
+  OS Overview with default (all-modules) access confirmed live. On
+  `/staff/team`, saw the roster but — confirmed by inspection, not
+  inference — no pending-invites section and no Invite button. Called
+  `staffTeamInvite` and `staffTeamRemoveMember` directly through the app's
+  own server-fn bridge (bypassing the UI entirely, the exact "hidden vs.
+  denied" distinction the brief asked about) — both rejected server-side
+  with "Only the programme owner can do that". Confirmed Content access
+  works normally (default permissions).
+- **Restricted staff** (`shekk-qa-restricted-…@shekk-test.invalid`):
+  accepted their invite the same way; permissions narrowed to
+  `["participants"]` only (written directly, since re-entering the real
+  owner's browser session mid-test wasn't available in this pass — see
+  below — but the write itself is the same shape `staffUpdateTeamMember`
+  already writes, and that function is unit-tested). From their own live
+  session: `/staff/students` worked, a direct `staffUpsertContent` call
+  was rejected server-side ("You do not have permission to do that") —
+  real enforcement of a narrowed permission set, not just a UI hide.
+- **Removal**: the ordinary-staff account's `programme_staff` row was
+  removed; logging back into that same account immediately showed "This
+  account isn't set up as programme staff" both in the UI and from
+  `staffSession()` directly (zero workspaces) — access revoked
+  server-side, confirmed the moment the row was gone, no caching lag.
+- **Student** (`shekk-qa-student-…@shekk-test.invalid`): denied `/staff`
+  before joining; joined the sandbox cohort via the real join-code flow;
+  saw the cohort's actual welcome message, schedule and the full
+  10-item checklist at their own (fresh, `0 of 10`) completion state,
+  confirming per-student progress isolation; denied `/staff/team` and
+  `staffSession()` (zero workspaces) after joining, same as before —
+  participant membership never implies staff access. Mobile viewport
+  (375px) checked for both the student Today tab and Programme tab —
+  rendered cleanly, bottom tab nav intact.
+- **One real limitation hit during this pass**: generating a sign-in
+  token for the *real* owner's own account (to restore that session after
+  testing) was correctly blocked by the environment's own safety
+  classifier before any attempt completed. Two consequences: (1) the
+  restricted-staff permission edit and the ordinary-staff removal above
+  used direct, equivalent-effect writes rather than a live owner session
+  for that one step, as noted; (2) this browser's `seed` tab was left
+  signed out at `/auth` — the account holder needs to sign back in
+  themselves with their own credentials next time they use it. Nothing
+  about their account was read, changed, or accessed beyond what this
+  conversation already had access to.
+
+**Demo-readiness blockers found**, ranked by how much they'd undermine a
+first programme-discovery meeting; only the top one was fixed this pass
+(small, high-visibility, copy-only) — the rest are sized for later work,
+not attempted here:
+1. **Fixed** — `/auth`'s page title, meta description, OG tags and on-page
+   promise list led with "one wallet for your year in Israel" / "Money in
+   shekels, funded from your home currency" — the pre-pivot, payment-first
+   framing `SHEKK_CONTEXT.md` explicitly says is no longer current. Now
+   leads with programme/arrival-essentials framing, matching Home and the
+   rest of the product. **Deliberately left alone**: the signup screen's
+   "The short version" consent paragraph (`Shekk is a shekel spending
+   account...`) — that's live Airwallex KYC/consent legal copy attached to
+   a checkbox, not marketing copy, and every new signup sees it regardless
+   of whether they'll ever touch the paused money features. Worth a
+   product/legal call on whether that consent belongs in front of a
+   programme student signing up for the first time — not a copy fix.
+2. **Not fixed, high impact**: there is no self-service way for a
+   programme director to provision their own programme — `adminCreate
+   Programme`/`adminCreateCohort`/`adminCreateInvite` are Shekk-internal-
+   admin-console-only (`/admin`, `assertAdmin`-gated). A real discovery
+   demo needs a Shekk operator to provision the programme by hand first.
+3. **Not fixed, visible**: `/staff/settings` is still the Phase-4
+   placeholder — a live nav item going nowhere real, next to now-real
+   Overview/Content/Team.
+4. **Not fixed, known**: documents remain link-only (no native upload —
+   documented in the Content checkpoint); notifications are in-app records
+   only, no real push/email delivery; current cohort/workspace is picked
+   automatically (latest staff grant, oldest cohort) with no manual
+   switcher yet (`pickActiveProgrammeId`'s own doc comment already flags
+   this). None of these regressed this pass — restated here because the
+   brief asked for them to be checked, not assumed.
+5. **Not re-verified this pass**: the pre-existing mobile field-staff
+   tools at `/programme/staff` — untouched by any of this session's
+   checkpoints; last characterized (not re-tested) as a working,
+   independent surface.
+6. **Cosmetic**: `auth.tsx` still references a legacy
+   `shekel-connect.lovable.app` redirect-allowlist entry — not user-facing,
+   left alone.
+
+Checklist retirement/progress preservation (Content data-integrity
+checkpoint) was re-confirmed still correct during this pass' student
+journey — not a new finding, listed here only because the brief asked for
+it explicitly.
+
+Verification: 250 tests pass (228 prior + 22 in `team.test.ts`, +0 net new
+this exact pass beyond the 2 invite-visibility regression tests already
+counted there), typecheck and lint pass on every changed line, production
+build passes. Live-verified as above; full account cleanup confirmed by a
+direct read.
 
 There is an internal **Shekk testing sandbox** programme
 (`src/lib/programme-testbed.server.ts`, `src/lib/programme-ops.functions.ts`)

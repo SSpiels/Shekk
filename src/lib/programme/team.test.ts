@@ -132,10 +132,59 @@ describe("staffTeamOverview", () => {
     ]);
   });
 
-  it("canManage is false for a non-owner staff caller", async () => {
+  it("canManage is false for a non-owner staff caller, and invites (codes included) never reach them — even though real pending invites exist", async () => {
     const { db } = database({ rows: { programme_staff: { role: "staff" } } });
+    // Invites really do exist for this programme — the point of the test is
+    // that a non-owner's overview still comes back with none, because
+    // staffTeamOverview never even queries programme_invites for them
+    // (matching the RLS policy narrowing invite SELECT to owners only).
+    admin = database({
+      rows: {
+        programme_staff: [{ user_id: "u2", role: "staff" }],
+        programme_invites: [{ id: "inv-1", code: "STAFF-SECRET", email: "someone@example.com" }],
+      },
+    });
+    mock.admin = admin.db;
+
     const overview = await staffTeamOverview(db, "u2", "prog-a");
     expect(overview.canManage).toBe(false);
+    expect(overview.invites).toEqual([]);
+  });
+
+  it("an owner does see pending invites, codes included", async () => {
+    const { db } = database({ rows: { programme_staff: { role: "owner" } } });
+    admin = database({
+      rows: {
+        programme_staff: [{ user_id: "u1", role: "owner" }],
+        programme_invites: [
+          {
+            id: "inv-1",
+            code: "STAFF-ABC123",
+            email: "someone@example.com",
+            role: "staff",
+            note: null,
+            created_at: "2026-01-01T00:00:00Z",
+            expires_at: null,
+          },
+        ],
+      },
+    });
+    mock.admin = admin.db;
+
+    const overview = await staffTeamOverview(db, "u1", "prog-a");
+    expect(overview.canManage).toBe(true);
+    expect(overview.invites).toEqual([
+      {
+        id: "inv-1",
+        code: "STAFF-ABC123",
+        email: "someone@example.com",
+        role: "staff",
+        note: null,
+        createdAt: "2026-01-01T00:00:00Z",
+        expiresAt: null,
+        expired: false,
+      },
+    ]);
   });
 });
 
