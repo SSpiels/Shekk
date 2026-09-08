@@ -401,6 +401,7 @@ describe("checklistProgress", () => {
     audience: everyone,
     done: false,
     doneCount: null,
+    archivedAt: null,
     ...over,
   });
 

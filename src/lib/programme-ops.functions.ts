@@ -13,11 +13,22 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
+import { isSafeContentUrl } from "@/lib/programme/logic";
 
 /* ────────────────────────────────── Schemas ───────────────────────────────── */
 
 const uuid = z.string().uuid();
 const text = (max: number) => z.string().trim().max(max).nullish();
+/** Same rule as programme-ops.server.ts's assertSafeContentLinks (the real
+ *  gate) — this just gives the client a friendlier message before the round
+ *  trip. allowRelative accepts a Shekk-internal "/path" alongside http(s). */
+const safeUrl = (max: number, opts: { allowRelative?: boolean } = {}) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .refine((v) => isSafeContentUrl(v, opts), "Enter a valid http(s) link")
+    .nullish();
 
 const code = z
   .string()
@@ -84,7 +95,7 @@ const checklistValues = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/)
     .nullish(),
   required: z.boolean().optional(),
-  action_url: text(300),
+  action_url: safeUrl(300, { allowRelative: true }),
   feature_key: text(40),
   sort_order: z.number().int().min(0).max(999).optional(),
 });
@@ -92,7 +103,7 @@ const checklistValues = z.object({
 const documentValues = z.object({
   label: z.string().trim().min(1).max(160),
   description: text(1000),
-  link_url: text(800),
+  link_url: safeUrl(800),
   category: z.string().trim().max(40).optional(),
   sort_order: z.number().int().min(0).max(999).optional(),
 });
@@ -525,7 +536,18 @@ export const staffUpdateProgrammeInfo = createServerFn({ method: "POST" })
 
 export const staffUpsertContent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((d: unknown) => contentInput.parse(d))
+  .inputValidator((d: unknown) => {
+    // .parse() throws a ZodError whose .message is the raw JSON issues
+    // array — fine for a dev console, unreadable if it reaches the staff
+    // editor's error banner verbatim. safeUrl's rejection is the one
+    // validation failure here a staff member can actually trigger through
+    // normal use (a mistyped or unsafe link), so surface just its message.
+    const result = contentInput.safeParse(d);
+    if (!result.success) {
+      throw new Error(result.error.issues[0]?.message || "That doesn't look right.");
+    }
+    return result.data;
+  })
   .handler(async ({ data, context }) => {
     const { upsertContent } = await import("@/lib/programme-ops.server");
     return upsertContent(context.supabase, context.userId, {
@@ -550,7 +572,17 @@ export const staffDeleteContent = createServerFn({ method: "POST" })
   )
   .handler(async ({ data, context }) => {
     const { deleteContent } = await import("@/lib/programme-ops.server");
-    return deleteContent(context.supabase, context.userId, data.kind, data.cohortId, data.id);
+    // cohortId is accepted for backward-compat with existing callers but
+    // deliberately unused below — see deleteContent's own doc comment for why.
+    return deleteContent(context.supabase, context.userId, data.kind, data.id);
+  });
+
+export const staffRestoreChecklistItem = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ itemId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { restoreChecklistItem } = await import("@/lib/programme-ops.server");
+    return restoreChecklistItem(context.supabase, context.userId, data.itemId);
   });
 
 export const staffSeedChecklist = createServerFn({ method: "POST" })

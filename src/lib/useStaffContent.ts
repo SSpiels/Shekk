@@ -11,6 +11,7 @@ import { useServerFn } from "@tanstack/react-start";
 import {
   staffContentOverview,
   staffDeleteContent,
+  staffRestoreChecklistItem,
   staffSeedChecklist,
   staffUpdateProgrammeInfo,
   staffUpsertContent,
@@ -67,6 +68,15 @@ export function useStaffDeleteContent(cohortId: string | null) {
   return useMutation({
     mutationFn: (data: { kind: "checklist_item" | "document" | "contact" | "place"; id: string }) =>
       fn({ data: { ...data, cohortId: cohortId as string } }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useStaffRestoreChecklistItem(cohortId: string | null) {
+  const fn = useServerFn(staffRestoreChecklistItem);
+  const invalidate = useInvalidateContent(cohortId);
+  return useMutation({
+    mutationFn: (itemId: string) => fn({ data: { itemId } }),
     onSuccess: invalidate,
   });
 }

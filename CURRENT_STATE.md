@@ -1,7 +1,8 @@
 # Current state
 
 **Last audited:** 2026-09-08
-**Branch audited:** `feature/programme-os-v1`; Content module checkpoint after the
+**Branch audited:** `feature/programme-os-v1`; Content data-integrity &
+security checkpoint, after the Content module checkpoint, after the
 date-stabilisation checkpoint (`ade0992`).
 
 This is the only document in this set that's expected to go stale — treat it
@@ -117,13 +118,12 @@ session context are **implemented**. Per V1 module:
   `insurance-cards`, `member-documents`, which are all real per-user
   buckets). The editor is honest about this — a hint under the Link field
   says native upload isn't part of V1 — rather than showing an upload
-  control that doesn't work.
-- Checklist items with student completion history: deleting one still
-  cascades their `programme_checklist_progress` rows at the database level
-  (`ON DELETE CASCADE`, pre-existing schema, not touched here) — the editor
-  now shows the real completion count and, when it's non-zero, a delete
-  confirmation naming exactly how many students' progress records will be
-  removed, rather than deleting silently. It does not prevent the delete.
+  control that doesn't work. Native upload remains unbuilt after the
+  integrity/security checkpoint below too — that pass added link *safety*
+  (scheme validation), not upload.
+- Checklist items with student completion history are **retired, not
+  deleted** — see the integrity/security checkpoint below; the original
+  "delete cascades progress" behaviour it replaced is gone.
 - Verification: 206 tests pass (no new ones added — this module has no
   date/timezone logic worth unit-testing beyond what already exists;
   correctness was checked live instead), typecheck and changed-line lint
@@ -135,6 +135,75 @@ session context are **implemented**. Per V1 module:
   with zero members, and read through existing Documents/Contacts/Places
   data rendering correctly. No disposable test document/contact/place was
   created — only the one checklist item, which was deleted afterward.
+
+### Content data-integrity & security checkpoint
+
+Follow-up pass over Content, before starting Team. No UI redesign — same
+five tabs, same engine; this closed specific gaps found on review.
+
+- **Checklist retirement, not deletion.** `programme_checklist_items` gained
+  an `archived_at timestamptz` column (migration
+  `20260908130000_checklist_item_archive.sql`, applied to the linked dev
+  project) — purely additive, plus one RLS policy replacement that only
+  *narrows* what students (not staff) can see. `deleteContent` now checks
+  `programme_checklist_progress` for the item first: zero rows hard-deletes
+  exactly as before; one or more retires it (`archived_at = now()`) instead
+  — the row, its history and its audience targeting are preserved, and it's
+  simply excluded from the active student checklist, from onboarding
+  completion math (`loadCohortRosterRaw`, `staffStudentProfile`), and from
+  `readHub` (student view and mobile staff's read-only list). Content's own
+  `staffContentOverview` still shows retired items, in a separate "Retired"
+  section with a completion count and a **Restore** button
+  (`restoreChecklistItem`, clears `archived_at`) — staff can see and undo a
+  retirement, nothing is ever silently gone. The desktop confirmation dialog
+  and the Delete/Retire button label both say which is about to happen and
+  why, using the real completion count, before the staff member confirms.
+- **Cross-cohort write safety.** `upsertContent`/`deleteContent` previously
+  trusted a client-supplied `cohortId` next to a client-supplied row `id` —
+  RLS's `USING`/`WITH CHECK` clauses back-stopped this so nothing was
+  actually exploitable, but a staff member with grants on two programmes
+  could in principle have supplied a mismatched pair. Both functions now
+  re-read the target row's real `cohort_id` first (same pattern
+  `deleteGroup`/`setGroupMembership` already used) and check permission —
+  and, on edit, write — against that, never the caller's claim. Covered by
+  `content.test.ts`.
+- **`staffUpdateProgrammeInfo` reviewed**, not changed: it already checked
+  `requireStaff` before touching the service role, with no separate row id
+  to mismatch (the target *is* the checked cohort). Returns no student PII
+  or financial/KYC data — confirmed by reading `staffContentOverview`'s
+  full return shape.
+- **Document/checklist link scheme validation.** `programme_documents
+  .link_url` and `programme_checklist_items.action_url` both render straight
+  into a student-facing `<a href>` (`Participant.tsx`'s DocRow/ChecklistRow)
+  and previously accepted any string. `isSafeContentUrl` (`logic.ts`) now
+  gates both — http(s) only, `action_url` additionally accepts a same-origin
+  `/path` (its documented use, e.g. `/services/esim`) but rejects a
+  protocol-relative `//host`, which a browser resolves as absolute the same
+  as a full URL. Enforced in `upsertContent` itself (the trust boundary,
+  same as `validateEventInterval`/`validateEventTime` for events), with the
+  same rule mirrored in the zod schema for an earlier client-side message.
+  Live-tested with `javascript:alert(1)` in the desktop Documents editor —
+  rejected, cleanly ("Enter a valid http(s) link"), nothing written.
+- **Error message cleanup**, found while doing that live test:
+  `staffUpsertContent`'s input validator originally let a raw `ZodError`
+  (whose `.message` is the JSON issues array) reach the staff editor's error
+  banner verbatim. Now `safeParse`s and throws just the first issue's
+  message — scoped to this one server function, not a global change to
+  every `inputValidator` in `programme-ops.functions.ts`, which all still
+  use bare `.parse()`.
+- Verification: 228 tests pass (206 prior + 22 new in
+  `src/lib/programme/content.test.ts`, covering create/edit cohort
+  re-derivation, cross-cohort permission rejection, retire-vs-hard-delete by
+  progress count, restore, `staffUpdateProgrammeInfo` permission checks, and
+  the group-authoritative-list/archived-flag shape of
+  `staffContentOverview`), typecheck and changed-line lint pass, production
+  build passes. Live-verified in Shekk Test Programme: ticked a real
+  checklist item as a student, retired it as staff (confirmed the dialog's
+  real completion count and retire-specific copy), confirmed it left both
+  the student checklist and the onboarding total, restored it, confirmed
+  both came back exactly as before — then reverted the tick to leave the
+  sandbox as found. Separately confirmed the `javascript:` link rejection
+  live, as above.
 
 There is an internal **Shekk testing sandbox** programme
 (`src/lib/programme-testbed.server.ts`, `src/lib/programme-ops.functions.ts`)

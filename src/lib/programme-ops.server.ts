@@ -37,6 +37,7 @@ import {
   onboardingItemStats,
   overallOnboardingPercent,
   countOnboardingStatuses,
+  isSafeContentUrl,
   type Priority,
   type ProgrammeAnnouncementRow,
   type ProgrammeContactRow,
@@ -334,7 +335,16 @@ export async function readHub(db: Db, userId: string): Promise<ProgrammeHub> {
     db.from("programme_votes").select("*").eq("cohort_id", cohortId).order("created_at", { ascending: false }),
     db.from("programme_vote_options").select("*").order("sort_order"),
     db.from("programme_vote_responses").select("vote_id, option_id, user_id"),
-    db.from("programme_checklist_items").select("*").eq("cohort_id", cohortId).order("sort_order"),
+    // Retired items never reach the active checklist here — this feeds both
+    // the student's own list and mobile staff's read-only display, neither of
+    // which has an "archived" concept; only Content's staffContentOverview
+    // shows them, for review/restore.
+    db
+      .from("programme_checklist_items")
+      .select("*")
+      .eq("cohort_id", cohortId)
+      .is("archived_at", null)
+      .order("sort_order"),
     db.from("programme_checklist_progress").select("item_id, done, user_id"),
     db.from("programme_documents").select("*").eq("cohort_id", cohortId).order("sort_order"),
     db.from("programme_contacts").select("*").eq("cohort_id", cohortId).order("sort_order"),
@@ -551,6 +561,7 @@ export async function readHub(db: Db, userId: string): Promise<ProgrammeHub> {
       audience: audienceFor(audiences, "checklist_item", id, s(c, "audience_kind")),
       done: myDone.has(id),
       doneCount: isStaff ? (doneCounts.get(id) ?? 0) : null,
+      archivedAt: null,
     };
   });
 
@@ -1453,10 +1464,13 @@ async function loadCohortRosterRaw(service: Db, cohortId: string): Promise<Cohor
       .select("id, name")
       .eq("cohort_id", cohortId)
       .order("sort_order"),
+    // A retired item drops out of onboarding completion math too, not just
+    // the student-facing list — see the archived_at note on readHub's query.
     service
       .from("programme_checklist_items")
       .select("id, item_key, title, details, due_on, required, action_url")
       .eq("cohort_id", cohortId)
+      .is("archived_at", null)
       .order("sort_order"),
     service
       .from("programme_checklist_progress")
@@ -1662,6 +1676,7 @@ export async function staffStudentProfile(
       .from("programme_checklist_items")
       .select("id, item_key, title, details, due_on, required, action_url")
       .eq("cohort_id", cohortId)
+      .is("archived_at", null)
       .order("sort_order"),
     service.from("programme_checklist_progress").select("item_id, done").eq("user_id", studentId),
   ]);
@@ -2224,6 +2239,7 @@ export async function staffContentOverview(
       audience: audienceFor(audiences, "checklist_item", id, s(c, "audience_kind")),
       done: false,
       doneCount: doneCounts.get(id) ?? 0,
+      archivedAt: s(c, "archived_at"),
     };
   });
 
@@ -2324,11 +2340,52 @@ const CONTENT_TABLE: Record<SimpleContentInput["kind"], { table: string; perm: S
   place: { table: "programme_places", perm: "places" },
 };
 
+/**
+ * Rejects a document link / checklist action link with an unsafe scheme
+ * (javascript:, data:, protocol-relative //host, ...) before it ever reaches
+ * the database — both render straight into an <a href> for students
+ * (Participant.tsx's DocRow/ChecklistRow). This is the trust boundary, not
+ * just a UI nicety: programmeOpsFunctions' zod schema checks the same rule
+ * for a friendlier client-side message, but this is what actually gates the
+ * write, the same way validateEventInterval/validateEventTime gate event
+ * writes rather than trusting the server-fn layer alone.
+ */
+function assertSafeContentLinks(kind: SimpleContentInput["kind"], values: Row) {
+  if (kind === "document" && values["link_url"] != null) {
+    if (!isSafeContentUrl(String(values["link_url"]))) {
+      throw new Error("Enter a valid http(s) link.");
+    }
+  }
+  if (kind === "checklist_item" && values["action_url"] != null) {
+    if (!isSafeContentUrl(String(values["action_url"]), { allowRelative: true })) {
+      throw new Error("Enter a Shekk path starting with / or a valid http(s) link.");
+    }
+  }
+}
+
 export async function upsertContent(db: Db, userId: string, input: SimpleContentInput) {
   const spec = CONTENT_TABLE[input.kind];
-  await requireStaff(db, userId, input.cohortId, spec.perm);
+  assertSafeContentLinks(input.kind, input.values);
+
+  // Editing an existing row: the row's own cohort_id is the only source of
+  // truth, never the caller-supplied one — otherwise a staff member with
+  // grants on two programmes could pass someone else's row id alongside
+  // their own cohortId and (if the WITH CHECK permission also passed) move
+  // that content into a cohort it never belonged to.
+  let cohortId = input.cohortId;
+  if (input.id) {
+    const { data: existing } = await db
+      .from(spec.table)
+      .select("cohort_id")
+      .eq("id", input.id)
+      .maybeSingle();
+    if (!existing) throw new Error("That no longer exists.");
+    cohortId = String((existing as Row)["cohort_id"]);
+  }
+
+  await requireStaff(db, userId, cohortId, spec.perm);
   const audience = input.audience ?? everyone;
-  const values: Row = { ...input.values, cohort_id: input.cohortId, audience_kind: audience.kind };
+  const values: Row = { ...input.values, cohort_id: cohortId, audience_kind: audience.kind };
 
   let id = input.id ?? null;
   if (id) {
@@ -2339,22 +2396,75 @@ export async function upsertContent(db: Db, userId: string, input: SimpleContent
     if (error) throw new Error(error.message || "We couldn't save that");
     id = String((data as Row)["id"]);
   }
-  await writeAudience(db, input.cohortId, input.kind, id, audience);
+  await writeAudience(db, cohortId, input.kind, id, audience);
   return readHub(db, userId);
 }
 
+/**
+ * cohortId isn't a parameter here on purpose: the row's own cohort_id (read
+ * below) is the only thing checked against, for the same reason upsertContent
+ * ignores the caller-supplied cohortId on edit — a client-supplied cohortId
+ * next to someone else's row id must never be able to influence which
+ * programme's permission gets checked.
+ */
 export async function deleteContent(
   db: Db,
   userId: string,
   kind: SimpleContentInput["kind"],
-  cohortId: string,
   id: string,
 ) {
   const spec = CONTENT_TABLE[kind];
+  const { data: existing } = await db
+    .from(spec.table)
+    .select("cohort_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (!existing) return readHub(db, userId);
+  const cohortId = String((existing as Row)["cohort_id"]);
   await requireStaff(db, userId, cohortId, spec.perm);
+
+  if (kind === "checklist_item") {
+    const { count } = await db
+      .from("programme_checklist_progress")
+      .select("id", { count: "exact", head: true })
+      .eq("item_id", id);
+    if (count && count > 0) {
+      // Retire, don't delete: programme_checklist_progress.item_id cascades
+      // on delete, so removing the row would silently wipe every student's
+      // completion record for it. The audience rows are left alone too, so
+      // restoreChecklistItem brings the item back exactly as it was.
+      const { error } = await db
+        .from(spec.table)
+        .update({ archived_at: new Date().toISOString() } as never)
+        .eq("id", id);
+      if (error) throw error;
+      return readHub(db, userId);
+    }
+  }
+
   const { error } = await db.from(spec.table).delete().eq("id", id);
   if (error) throw error;
   await db.from("programme_audiences").delete().eq("subject_type", kind).eq("subject_id", id);
+  return readHub(db, userId);
+}
+
+/** Undo a checklist item retirement — students see it again, staff can edit
+ *  it again, and its (never-touched) completion history is exactly as it
+ *  was when it was archived. */
+export async function restoreChecklistItem(db: Db, userId: string, itemId: string) {
+  const { data: existing } = await db
+    .from("programme_checklist_items")
+    .select("cohort_id")
+    .eq("id", itemId)
+    .maybeSingle();
+  if (!existing) return readHub(db, userId);
+  const cohortId = String((existing as Row)["cohort_id"]);
+  await requireStaff(db, userId, cohortId, "checklists");
+  const { error } = await db
+    .from("programme_checklist_items")
+    .update({ archived_at: null } as never)
+    .eq("id", itemId);
+  if (error) throw error;
   return readHub(db, userId);
 }
 

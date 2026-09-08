@@ -23,6 +23,7 @@ import {
 } from "@/lib/programme/logic";
 import { useStaffDeleteContent, useStaffUpsertContent } from "@/lib/useStaffContent";
 import { StaffAudiencePicker } from "@/components/staff/communications/StaffAudiencePicker";
+import { cleanError } from "@/lib/useProgrammeHub";
 
 const inputClass =
   "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary";
@@ -115,7 +116,7 @@ export function StaffContentEditor<K extends ContentKind>({
     setError(null);
     const onDone = {
       onSuccess: onClose,
-      onError: () => setError("We couldn't save that."),
+      onError: (e: unknown) => setError(cleanError(e, "We couldn't save that.")),
     };
 
     if (kind === "checklist_item") {
@@ -465,7 +466,7 @@ export function StaffContentEditor<K extends ContentKind>({
             <div className="flex items-center justify-between gap-2 rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2.5">
               <span className="text-[12.5px] font-medium text-destructive">
                 {kind === "checklist_item" && doneCount > 0
-                  ? `Delete this item? ${doneCount} student${doneCount === 1 ? "'s" : "s'"} completion record${doneCount === 1 ? "" : "s"} for it will be permanently removed too.`
+                  ? `${doneCount} student${doneCount === 1 ? " has" : "s have"} completed this — it'll be retired instead of deleted, so their completion record${doneCount === 1 ? "" : "s"} stay${doneCount === 1 ? "s" : ""} intact. Students stop seeing it; you can restore it later.`
                   : "Delete this for everyone? This can't be undone."}
               </span>
               <div className="flex shrink-0 gap-2">
@@ -482,7 +483,11 @@ export function StaffContentEditor<K extends ContentKind>({
                   onClick={() => del.mutate({ kind, id: item!.id }, { onSuccess: onClose })}
                   className="rounded-lg bg-destructive px-2.5 py-1 text-[12px] font-semibold text-destructive-foreground disabled:opacity-60"
                 >
-                  Yes, delete
+                  {kind === "checklist_item" && doneCount > 0
+                    ? del.isPending
+                      ? "Retiring…"
+                      : "Yes, retire it"
+                    : "Yes, delete"}
                 </button>
               </div>
             </div>
@@ -498,7 +503,8 @@ export function StaffContentEditor<K extends ContentKind>({
                 onClick={() => setConfirmingDelete(true)}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-destructive/30 px-3.5 py-2 text-[13px] font-semibold text-destructive"
               >
-                <Trash2 className="size-4" /> Delete
+                <Trash2 className="size-4" />
+                {kind === "checklist_item" && doneCount > 0 ? "Retire" : "Delete"}
               </button>
             ) : (
               <span />

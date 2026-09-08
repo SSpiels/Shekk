@@ -271,6 +271,12 @@ export type ChecklistItem = {
   audience: Audience;
   done: boolean;
   doneCount: number | null;
+  /** Set once a staff member retires the item (see staffContentOverview /
+   *  deleteContent's archive-instead-of-delete path). Always null wherever
+   *  the active student checklist is read (readHub, onboarding calculations)
+   *  — only Content's own overview surfaces archived rows, so staff can
+   *  review and restore them. */
+  archivedAt: string | null;
 };
 
 export type ProgrammeDoc = {
@@ -917,6 +923,27 @@ export function eventFullForGoing(event: ProgrammeEvent): boolean {
   if (!event.capacity || event.capacity <= 0) return false;
   if (event.goingCount === null) return false;
   return event.goingCount >= event.capacity && event.myRsvp !== "going";
+}
+
+/**
+ * Guards any user-entered link that ends up in an `<a href>` — currently a
+ * document's link_url and a checklist item's action_url (both rendered
+ * as-is in Participant.tsx's DocRow/ChecklistRow). Blocks `javascript:`,
+ * `data:` and every other scheme except http/https, and rejects
+ * protocol-relative "//host" (browsers resolve that as absolute, same as a
+ * full URL). `allowRelative` additionally accepts a same-origin path
+ * starting with a single "/" — action_url's documented use is a Shekk-
+ * internal route like "/services/esim", not an external link.
+ */
+export function isSafeContentUrl(value: string, opts: { allowRelative?: boolean } = {}): boolean {
+  if (!value) return true;
+  if (opts.allowRelative && value.startsWith("/") && !value.startsWith("//")) return true;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 /** Directions deep link, reusing the same Google target as Shekk Maps. */

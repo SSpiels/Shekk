@@ -5,7 +5,7 @@
  * the way Calendar has StaffEventDetail, because these rows are already
  * short enough to show everything staff need inline.
  */
-import { AlertTriangle, ExternalLink, Mail, MessageCircle, Phone } from "lucide-react";
+import { AlertTriangle, ExternalLink, Mail, MessageCircle, Phone, RotateCcw } from "lucide-react";
 import {
   audienceLabel,
   type ChecklistItem,
@@ -67,6 +67,51 @@ export function StaffChecklistList({
               </>
             ) : null}
           </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Retired items — kept (with their completion history) rather than deleted
+ * once a student has made progress on them; see deleteContent's
+ * archive-instead-of-delete path. Read-only except for Restore, since an
+ * archived item isn't part of the active checklist for staff to edit fields
+ * on until it's back.
+ */
+export function StaffRetiredChecklistList({
+  items,
+  onRestore,
+  restoringId,
+}: {
+  items: ChecklistItem[];
+  onRestore: (item: ChecklistItem) => void;
+  restoringId: string | null;
+}) {
+  return (
+    <div className="space-y-2.5">
+      {items.map((item) => (
+        <div
+          key={item.id}
+          className="flex items-start justify-between gap-3 rounded-2xl border border-dashed border-border bg-muted/30 p-4"
+        >
+          <div className="min-w-0">
+            <p className="font-semibold text-muted-foreground">{item.title}</p>
+            <p className="text-[11.5px] text-muted-foreground">
+              {item.doneCount ?? 0} student{item.doneCount === 1 ? "" : "s"} completed this before
+              it was retired.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={restoringId === item.id}
+            onClick={() => onRestore(item)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-border px-3 py-1.5 text-[12px] font-semibold hover:bg-muted disabled:opacity-60"
+          >
+            <RotateCcw className="size-3.5" />
+            {restoringId === item.id ? "Restoring…" : "Restore"}
+          </button>
         </div>
       ))}
     </div>

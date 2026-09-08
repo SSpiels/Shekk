@@ -26,9 +26,14 @@ import {
   StaffContactList,
   StaffDocumentList,
   StaffPlaceList,
+  StaffRetiredChecklistList,
 } from "@/components/staff/content/StaffContentLists";
 import { StaffProgrammeInfoCard } from "@/components/staff/content/StaffProgrammeInfoCard";
-import { useStaffContentOverview, useStaffSeedChecklist } from "@/lib/useStaffContent";
+import {
+  useStaffContentOverview,
+  useStaffRestoreChecklistItem,
+  useStaffSeedChecklist,
+} from "@/lib/useStaffContent";
 import { useStaffStudentRoster } from "@/lib/useStaffStudents";
 import {
   staffCan,
@@ -71,6 +76,8 @@ function ContentScreen() {
   const { data, isLoading, error, refetch } = useStaffContentOverview(cohortId);
   const roster = useStaffStudentRoster(cohortId);
   const seedChecklist = useStaffSeedChecklist(cohortId);
+  const restoreItem = useStaffRestoreChecklistItem(cohortId);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
   const students = useMemo(
     () =>
       (roster.data ?? []).map((st) => ({
@@ -119,6 +126,8 @@ function ContentScreen() {
   if (!data) return null;
 
   const groups = data.groups.map((g) => ({ id: g.id, name: g.name }));
+  const activeChecklist = data.checklist.filter((i) => !i.archivedAt);
+  const retiredChecklist = data.checklist.filter((i) => i.archivedAt);
   const activeTabPerm = tab === "info" ? null : TAB_PERM[tab];
   const canEditActiveTab = activeTabPerm ? canEdit(activeTabPerm) : true;
 
@@ -211,34 +220,52 @@ function ContentScreen() {
       ) : null}
 
       {tab === "checklist" ? (
-        data.checklist.length === 0 ? (
-          <div className="space-y-3">
-            <EmptyState
-              icon={CheckSquare}
-              title="No checklist yet"
-              body="What students need to sort before they fly and while they're here — each item can be required, have a due date, and target a specific audience."
+        <div className="space-y-5">
+          {activeChecklist.length === 0 ? (
+            <div className="space-y-3">
+              <EmptyState
+                icon={CheckSquare}
+                title="No checklist yet"
+                body="What students need to sort before they fly and while they're here — each item can be required, have a due date, and target a specific audience."
+              />
+              {canEditActiveTab ? (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    disabled={seedChecklist.isPending}
+                    onClick={() => seedChecklist.mutate()}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3.5 py-2 text-[13px] font-semibold hover:bg-muted disabled:opacity-60"
+                  >
+                    <Sparkles className="size-4" />
+                    {seedChecklist.isPending ? "Adding…" : "Start from Shekk's standard checklist"}
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          ) : (
+            <StaffChecklistList
+              items={activeChecklist}
+              groups={groups}
+              onOpen={(item) => setEditor({ kind: "checklist_item", item })}
             />
-            {canEditActiveTab ? (
-              <div className="flex justify-center">
-                <button
-                  type="button"
-                  disabled={seedChecklist.isPending}
-                  onClick={() => seedChecklist.mutate()}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-border px-3.5 py-2 text-[13px] font-semibold hover:bg-muted disabled:opacity-60"
-                >
-                  <Sparkles className="size-4" />
-                  {seedChecklist.isPending ? "Adding…" : "Start from Shekk's standard checklist"}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <StaffChecklistList
-            items={data.checklist}
-            groups={groups}
-            onOpen={(item) => setEditor({ kind: "checklist_item", item })}
-          />
-        )
+          )}
+
+          {retiredChecklist.length > 0 ? (
+            <div className="space-y-2">
+              <p className="text-[12.5px] font-semibold text-muted-foreground">
+                Retired — hidden from students, completion history kept
+              </p>
+              <StaffRetiredChecklistList
+                items={retiredChecklist}
+                restoringId={restoringId}
+                onRestore={(item) => {
+                  setRestoringId(item.id);
+                  restoreItem.mutate(item.id, { onSettled: () => setRestoringId(null) });
+                }}
+              />
+            </div>
+          ) : null}
+        </div>
       ) : null}
 
       {editor ? (
