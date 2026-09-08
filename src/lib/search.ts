@@ -3,6 +3,7 @@ import { SERVICE_CATEGORIES, ALL_SERVICES, serviceLinkProps, type Service } from
 import { GUIDES, categoryLabel, guideKeywords } from "@/lib/guides";
 import { TRACKS, trackKeywords } from "@/lib/official-content";
 import { TRACK_ROUTES } from "@/components/official/TrackApp";
+import { MONEY_ENABLED } from "@/lib/flags";
 
 
 export type SearchResult = {
@@ -36,7 +37,9 @@ const PAGES: { title: string; subtitle: string; emoji: string; to: LinkProps["to
   { title: "University finder", subtitle: "Match yourself to a degree in Israel", emoji: "🏫", to: "/explore/uni-finder", keywords: "university finder degree course match recommendation hebrew university tau technion reichman bar ilan ben gurion international programme english taught tuition apply" },
   { title: "Explore the IDF", subtitle: "Units, roles and what service looks like", emoji: "🎖️", to: "/explore/idf", keywords: "idf explorer units unit directory roles combat golani paratroopers givati nahal 8200 intelligence air force navy service tzahal" },
   { title: "Me", subtitle: "Profile, programme, verification, settings", emoji: "🙋", to: "/me", keywords: "me profile settings account programme cohort verification badge saved places photo" },
-  { title: "Re-verify", subtitle: "Annual ID re-verification", emoji: "🪪", to: "/reverify", keywords: "reverify re-verify verification id passport annual kyc deadline" },
+  ...(MONEY_ENABLED
+    ? [{ title: "Re-verify", subtitle: "Annual ID re-verification", emoji: "🪪", to: "/reverify" as LinkProps["to"], keywords: "reverify re-verify verification id passport annual kyc deadline" }]
+    : []),
   { title: "Terms & Conditions", subtitle: "The full legal terms", emoji: "📄", to: "/terms", keywords: "terms conditions t&c legal policy money" },
   { title: "Health cover", subtitle: "Insurance card, member number, hotlines", emoji: "🩺", to: "/explore/health", keywords: "health cover insurance card maccabi clalit meuhedet leumit harel yedidim passportcard cigna geoblue kupah kupat holim doctor clinic terem hospital member number policy emergency 101 ambulance dentist" },
   { title: "Fitness", subtitle: "Gyms, classes, pools & courts near you", emoji: "🏋️", to: "/explore/fitness", keywords: "fitness gym gyms workout exercise class classes pool swim swimming studio pilates yoga spinning crossfit weights martial arts krav maga boxing climbing bouldering basketball football court pitch sports club country club holmes place icon gymbox go active membership day pass short term contract" },

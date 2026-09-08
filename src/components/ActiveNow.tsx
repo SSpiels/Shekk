@@ -4,6 +4,7 @@ import { X } from "lucide-react";
 import { useApp } from "@/lib/store";
 import { QRCode } from "@/components/QRCode";
 import { eventWhen, useMyTickets } from "@/lib/useEvents";
+import { MONEY_ENABLED } from "@/lib/flags";
 
 type LiveItem = {
   id: string;
@@ -55,7 +56,7 @@ export function ActiveNow() {
       });
     }
 
-    if (pendingSplit) {
+    if (MONEY_ENABLED && pendingSplit) {
       list.unshift({
         id: `split-${pendingSplit.id}`,
         emoji: "💸",

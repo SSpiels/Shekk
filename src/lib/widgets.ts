@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { ils } from "./mock";
 import { relativeTime } from "./news-types";
 import { pick, rand, type UserContext } from "./personalise";
+import { MONEY_ENABLED } from "./flags";
 
 export type WidgetCta = { label: string; to?: string; href?: string };
 
@@ -42,7 +43,7 @@ export type WidgetDef = {
 
 const clamp = (n: number) => Math.max(0, Math.min(100, n));
 
-export const WIDGETS: WidgetDef[] = [
+const RAW_WIDGETS: WidgetDef[] = [
   {
     id: "today",
     title: "Today",
@@ -270,6 +271,11 @@ export const WIDGETS: WidgetDef[] = [
 
 ];
 
+/** Money is paused for launch (see flags.ts) — the "Requests"/split-repayment
+ *  tile has nothing to show without it, so it's excluded here rather than at
+ *  every place WIDGETS is read, the same single-flag approach flags.ts
+ *  documents for the rest of Money's surfaces. */
+export const WIDGETS: WidgetDef[] = RAW_WIDGETS.filter((w) => MONEY_ENABLED || w.id !== "social");
 
 export const WIDGET_BY_ID = Object.fromEntries(WIDGETS.map((w) => [w.id, w])) as Record<string, WidgetDef>;
 

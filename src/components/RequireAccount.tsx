@@ -17,6 +17,7 @@ import { Splash } from "@/components/Splash";
 /** Routes a signed-out visitor is allowed to reach. */
 const OPEN_PREFIXES = [
   "/auth",
+  "/staff-login",
   "/reset-password",
   "/terms",
   "/welcome",

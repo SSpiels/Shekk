@@ -29,6 +29,7 @@ import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as SetupRouteImport } from './routes/setup'
 import { Route as SitemapDotxmlRouteImport } from './routes/sitemap[.]xml'
 import { Route as StaffRouteRouteImport } from './routes/staff/route'
+import { Route as StaffLoginRouteImport } from './routes/staff-login'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as TicketsRouteImport } from './routes/tickets'
 import { Route as TopupRouteImport } from './routes/topup'
@@ -212,6 +213,11 @@ const SitemapDotxmlRoute = SitemapDotxmlRouteImport.update({
 const StaffRouteRoute = StaffRouteRouteImport.update({
   id: '/staff',
   path: '/staff',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StaffLoginRoute = StaffLoginRouteImport.update({
+  id: '/staff-login',
+  path: '/staff-login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const TermsRoute = TermsRouteImport.update({
@@ -658,6 +664,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/staff-login': typeof StaffLoginRoute
   '/terms': typeof TermsRoute
   '/tickets': typeof TicketsRoute
   '/topup': typeof TopupRoute
@@ -761,6 +768,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/staff-login': typeof StaffLoginRoute
   '/terms': typeof TermsRoute
   '/tickets': typeof TicketsRoute
   '/topup': typeof TopupRoute
@@ -868,6 +876,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRoute
   '/setup': typeof SetupRoute
   '/sitemap.xml': typeof SitemapDotxmlRoute
+  '/staff-login': typeof StaffLoginRoute
   '/terms': typeof TermsRoute
   '/tickets': typeof TicketsRoute
   '/topup': typeof TopupRoute
@@ -976,6 +985,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sitemap.xml'
+    | '/staff-login'
     | '/terms'
     | '/tickets'
     | '/topup'
@@ -1079,6 +1089,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sitemap.xml'
+    | '/staff-login'
     | '/terms'
     | '/tickets'
     | '/topup'
@@ -1185,6 +1196,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/setup'
     | '/sitemap.xml'
+    | '/staff-login'
     | '/terms'
     | '/tickets'
     | '/topup'
@@ -1292,6 +1304,7 @@ export interface RootRouteChildren {
   SettingsRoute: typeof SettingsRoute
   SetupRoute: typeof SetupRoute
   SitemapDotxmlRoute: typeof SitemapDotxmlRoute
+  StaffLoginRoute: typeof StaffLoginRoute
   TermsRoute: typeof TermsRoute
   TicketsRoute: typeof TicketsRoute
   TopupRoute: typeof TopupRoute
@@ -1492,6 +1505,13 @@ declare module '@tanstack/react-router' {
       path: '/staff'
       fullPath: '/staff'
       preLoaderRoute: typeof StaffRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/staff-login': {
+      id: '/staff-login'
+      path: '/staff-login'
+      fullPath: '/staff-login'
+      preLoaderRoute: typeof StaffLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/terms': {
@@ -2188,6 +2208,7 @@ const rootRouteChildren: RootRouteChildren = {
   SettingsRoute: SettingsRoute,
   SetupRoute: SetupRoute,
   SitemapDotxmlRoute: SitemapDotxmlRoute,
+  StaffLoginRoute: StaffLoginRoute,
   TermsRoute: TermsRoute,
   TicketsRoute: TicketsRoute,
   TopupRoute: TopupRoute,

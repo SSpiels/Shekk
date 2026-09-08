@@ -10,7 +10,7 @@ export const Route = createFileRoute("/reset-password")({
       { title: "Set a new password · Shekk" },
       {
         name: "description",
-        content: "Choose a new password for your Shekk account and get straight back to your money.",
+        content: "Choose a new password for your Shekk account and get straight back in.",
       },
       { property: "og:title", content: "Set a new password · Shekk" },
       { property: "og:description", content: "Choose a new Shekk password." },
@@ -48,10 +48,10 @@ function ResetPassword() {
         {done ? (
           <>
             <p className="text-sm text-muted-foreground">
-              You're signed in with your new password. Head back to your wallet.
+              You're signed in with your new password.
             </p>
-            <PrimaryButton onClick={() => (window.location.href = "/wallet")}>
-              Go to my wallet
+            <PrimaryButton onClick={() => (window.location.href = "/")}>
+              Continue to Shekk
             </PrimaryButton>
           </>
         ) : (

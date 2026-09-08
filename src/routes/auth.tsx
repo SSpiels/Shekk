@@ -1,18 +1,12 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
-import { Check, Loader2, MailCheck, ShieldCheck } from "lucide-react";
+import { Check, Loader2, MailCheck } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable/index";
 import { FocusScreen, PrimaryButton, Card } from "@/components/AppShell";
 import { Splash } from "@/components/Splash";
 import { useApp } from "@/lib/store";
-
-
-function safeNext(value: unknown): string {
-  if (typeof value !== "string") return "/";
-  if (!value.startsWith("/") || value.startsWith("//")) return "/";
-  return value;
-}
+import { afterAuthPath, safeNext } from "@/lib/auth-redirect";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
@@ -73,11 +67,6 @@ type OAuthMessage = {
     error_description?: unknown;
   };
 };
-
-/** New sessions land in the staged setup; it resumes or exits instantly if done. */
-function afterAuthPath(next: string) {
-  return next === "/" ? "/welcome" : next;
-}
 
 function isTrustedOAuthOrigin(origin: string) {
   return origin === window.location.origin || TRUSTED_OAUTH_ORIGINS.has(origin);
@@ -291,7 +280,14 @@ function Auth() {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: `${window.location.origin}/verify` },
+        options: {
+          // Confirming the email lands back here with the same destination
+          // that was requested before signing up — e.g. a shared programme
+          // join link — rather than a fixed page. `next` is already
+          // validated (Route.validateSearch runs safeNext on it), and
+          // /auth re-validates it again on load either way.
+          emailRedirectTo: `${window.location.origin}/auth?next=${encodeURIComponent(next)}`,
+        },
       });
       setBusy(false);
       if (error) return setError(error.message);
@@ -366,7 +362,9 @@ function Auth() {
               const { error } = await supabase.auth.resend({
                 type: "signup",
                 email: sentTo,
-                options: { emailRedirectTo: `${window.location.origin}/verify` },
+                options: {
+                  emailRedirectTo: `${window.location.origin}/auth?next=${encodeURIComponent(next)}`,
+                },
               });
               setBusy(false);
               if (error) return setError(error.message);
@@ -414,8 +412,8 @@ function Auth() {
           </h1>
           {mode === "signup" && (
             <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-              Finance, programme and Israel in one app — then a few quick questions so it fits your
-              trip.
+              Your programme, arrival essentials and daily life in Israel — then a few quick
+              questions so it fits your trip.
             </p>
           )}
           {mode === "signup" && (
@@ -501,25 +499,6 @@ function Auth() {
 
           {mode === "signup" && (
             <Card className="space-y-3">
-              <div className="max-h-28 overflow-y-auto rounded-xl bg-muted/50 p-3 text-xs leading-relaxed text-muted-foreground">
-                <p className="font-semibold text-foreground">The short version</p>
-                <p className="mt-1">
-                  Shekk is a shekel spending account. You add money from your own card or bank in
-                  your home currency; it is converted to shekels at the rate shown before you
-                  confirm, with the conversion cost always displayed. Money is held with our
-                  regulated payment partner, Airwallex, not by Shekk.
-                </p>
-                <p className="mt-1">
-                  You must be 16 or over, verify your identity before spending, and use the account
-                  yourself — never for someone else. We check your identity again every 12 months.
-                  Unspent shekels can be returned to you on closure to a source in your own name.
-                </p>
-                <p className="mt-1">
-                  Accounts are for people coming to Israel from abroad: you must live in a country
-                  Airwallex supports for onboarding, and you cannot open an account if you are
-                  resident in Israel.
-                </p>
-              </div>
               <label className="flex items-start gap-3 text-sm">
                 <input
                   type="checkbox"
@@ -532,7 +511,8 @@ function Auth() {
                   <Link to="/terms" className="font-semibold underline">
                     Terms &amp; Conditions
                   </Link>{" "}
-                  and privacy notice. I confirm I am 16 or over, resident outside Israel, and opening this account for myself, and I consent to electronic records and to identity checks run by Airwallex.
+                  and privacy notice, and confirm I&rsquo;m 16 or over and creating this account for
+                  myself.
                 </span>
               </label>
             </Card>
@@ -589,11 +569,11 @@ function Auth() {
           )}
         </div>
 
-        <p className="flex items-center justify-center gap-1.5 text-center text-xs text-muted-foreground">
-          <ShieldCheck className="size-3.5" /> Identity checks are run by our regulated payment
-          partner.
-        </p>
-        <Link to="/staff" className="text-center text-xs text-muted-foreground underline">
+        <Link
+          to="/staff-login"
+          search={{ next: "/", code: undefined }}
+          className="text-center text-xs text-muted-foreground underline"
+        >
           Programme staff?
         </Link>
         <button

@@ -1,11 +1,11 @@
 # Current state
 
 **Last audited:** 2026-09-08
-**Branch audited:** `feature/programme-os-v1`; Pilot onboarding & Settings
-checkpoint, after the Integration & Overview checkpoint, after the Team
-checkpoint, after the Content data-integrity & security checkpoint, after
-the Content module checkpoint, after the date-stabilisation checkpoint
-(`ade0992`).
+**Branch audited:** `feature/programme-os-v1`; Pre-demo cleanup & staff-auth
+checkpoint, after the Pilot onboarding & Settings checkpoint, after the
+Integration & Overview checkpoint, after the Team checkpoint, after the
+Content data-integrity & security checkpoint, after the Content module
+checkpoint, after the date-stabilisation checkpoint (`ade0992`).
 
 This is the only document in this set that's expected to go stale — treat it
 as a snapshot, not a guarantee. If you find it disagrees with the code, trust
@@ -42,7 +42,10 @@ work below.
 ## Programme OS (desktop, `/staff`)
 
 Shell (`ProgrammeOSShell`, `StaffSidebar`, `StaffMobileNav`), auth gate and
-session context are **implemented**. Per V1 module:
+session context are **implemented**. Its own front door,
+`src/routes/staff-login.tsx` (`/staff-login`), was added in the Pre-demo
+cleanup checkpoint — see that checkpoint below for what it does and why it
+exists separately from the student `/auth`. Per V1 module:
 
 | Module | State | Notes |
 |---|---|---|
@@ -578,6 +581,175 @@ realistically distribute a join link to their students (a channel that
 already exists — WhatsApp group, email list, printed orientation
 sheet — nothing new to build for this).
 
+### Pre-demo cleanup & staff-auth checkpoint
+
+Shifted focus back to the student product per this checkpoint's brief: fixed
+the confirmed join-code redirect bug, gave staff their own distinct sign-in
+surface, closed the money-off gaps the release-readiness assessment found,
+and confirmed the one tracked client-side token is genuinely safe. No new
+feature module; Programme OS, the financial infrastructure and the current
+branch are all unchanged in shape.
+
+**1. Signup-to-programme join redirect, fixed.** The bug: a brand-new
+student following a shared `/join/<code>` link had to sign up first: since
+email confirmation is a per-project Supabase Auth setting (not something
+this codebase controls), `auth.tsx`'s `emailRedirectTo` was previously
+hardcoded to `/verify` regardless of where they'd come from — on a project
+with confirmation required, confirming the email stranded them on the KYC
+page with the join code lost. Fixed by carrying the already-validated
+`next` value through as a query param on the confirmation redirect
+(`/auth?next=<next>`) instead of a fixed destination — `auth.tsx`'s
+existing "already signed in" effect then takes them straight to `next`
+once the confirmation lands them back there with a session. The
+open-redirect check itself (`safeNext`) was hardened at the same time: it
+now normalises backslashes before checking for a leading `//`, closing a
+known bypass class (`/\evil.com`, `\\evil.com`) that a same-origin-only
+check like this needs to account for. `safeNext`/`afterAuthPath` were
+extracted to `src/lib/auth-redirect.ts` (plus a new `afterStaffAuthPath`
+for the staff screen below) so this logic has direct unit tests
+(`auth-redirect.test.ts`, 10 cases) instead of only being reachable through
+a page component.
+
+Live-verified two ways, with disposable accounts, since this project's
+linked dev/test Supabase instance has email confirmation disabled (a
+deliberate setting — see `supabase/config.toml`'s own comment on avoiding
+the shared mailer's rate limit — so the real form can't exercise the
+confirmation round trip end to end by itself): (a) the real signup form at
+`/auth?next=/join/SHEKKTEST`, which returns a session immediately on this
+project and landed correctly on `/join/SHEKKTEST`; (b) the actual
+confirmation mechanism, independent of that project setting, by using the
+Supabase Admin API to generate a real signup-confirmation token for a
+fresh disposable account with the exact `redirectTo` the app now
+constructs, consuming it the same way Supabase's own server-side redirect
+would (a session established via the same hash-fragment shape), and
+confirming it landed on `/join/SHEKKTEST` — not `/verify`.
+
+**2. Staff authentication, differentiated.** New `src/routes/staff-login.tsx`
+(`/staff-login`) replaces sending staff through the student `/auth` screen.
+Branded "Shekk for Programmes" / "Sign in to your workspace", desktop-first
+two-panel layout (a `grad-balance`/`card-sheen` panel matching Programme
+OS's own visual language, collapsing to one column on mobile), with two
+explicit tabs: **Sign in** (existing staff account, email/password only —
+no signup offered here, so nobody can self-register into staff access from
+this screen) and **I have an invite** (preview a code, then accept it —
+reusing the exact same `useJoinFlow`/`programmeAcceptInvite` server path
+Team invites already used, not a new mechanism). A brand-new account can
+only be created from inside the invite tab, and only after a real,
+unaccepted invite has been previewed — creating the account never grants
+staff access by itself; accepting the specific invite still does that
+server-side. No student payment/KYC copy anywhere on the screen. Reachable
+signed-out (`RequireAccount`'s `OPEN_PREFIXES`); an already-signed-in
+non-staff account defaults straight to the invite tab. Fixed a related gap
+while wiring this up: `programmeAcceptInvite`'s success didn't invalidate
+the separate `["staff","session"]` query Programme OS's own gate reads, so
+accepting an invite could land on a stale "not staff" screen for a moment
+— `staff-login.tsx` now explicitly invalidates that query before
+navigating in. `staff/route.tsx`'s existing "not staff" screen also gained
+a link into the invite tab, for a signed-in account that just needs to
+redeem a code. `auth.tsx`'s own "Programme staff?" link now points here
+instead of `/staff`.
+
+Live-verified end to end with disposable accounts: a disposable owner
+account signed in through `/staff-login` and landed on `/staff/overview`;
+that owner created a real staff invite through the actual `staffTeamInvite`
+server function; a second, brand-new disposable account opened
+`/staff-login?code=<the invite>`, saw it auto-previewed, created an
+account through the invite tab's embedded form, and landed on
+`/staff/overview` with the roster count correctly at 3 — no stale
+"not staff" flash. Also checked the edge cases the code branches on: a
+student cohort code entered in the invite tab is rejected with an
+explicit "that's a student join code" message rather than a confusing
+generic error, and re-opening the now-accepted invite link correctly shows
+"This invite has already been used" with no accept button. All disposable
+accounts, the extra `programme_staff` rows and the used invite were
+deleted afterward — the Shekk Test Programme's owner/membership counts
+were confirmed back to exactly what they were before this pass.
+
+**3. Money-off gating, completed.** `MONEY_ENABLED=false` (`src/lib/flags.ts`)
+already kept money off the nav and Home's prompts, but several surfaces the
+release-readiness assessment found had never actually been gated — all
+fixed the same way the rest of the flag's surfaces already were (a
+conditional on the same flag, nothing deleted, so turning money back on
+restores every one of these with no further work):
+- `auth.tsx`'s signup screen: the financial consent paragraph ("Shekk is a
+  shekel spending account… Airwallex…") and the footer's "Identity checks
+  are run by our regulated payment partner" line are gone from general
+  signup. The equivalent, actually-required consent capture (US-person/PEP
+  declarations, terms acceptance) already exists at the real KYC step in
+  `/verify` (`draft.acceptTerms` etc.) and is untouched — nothing about the
+  legally-required financial consent itself was removed, only the
+  duplicate/premature copy that appeared before a student had any reason
+  to open a financial account. **Flagging for legal/product review, not
+  deciding it myself:** confirm this split (generic ToS at signup, full
+  financial consent only at `/verify`) is acceptable before this reaches a
+  real audience beyond a demo.
+- `welcome.tsx`: the onboarding wizard's "money" and "verify" chapters are
+  excluded from the step flow while the flag is off (same filter pattern
+  already used to skip the programme step for independents); the
+  signed-out Landing screen's "Spend in shekels" bullet and its footer
+  line swap to non-money copy; the completion screen drops the "Adding
+  money in" summary row, the "Identity check" quick link, and its
+  fallback "Recommended next" action (now "Explore Israel" instead of
+  "Add your first money" when there's no nearer programme/flight action).
+- `settings.tsx`: the whole Payments section — including a hardcoded fake
+  card, `•••• 4417 · Visa`, that had no real backing state — is gone,
+  matching how `me.tsx` already gated its own money content; the page
+  header no longer states a shekel balance. **Deliberately left alone**:
+  Notifications' and Security's several money-specific toggles (Split
+  requests, Face ID to pay, Discoverable by friend code, …) and the
+  page's closing "balances are held in shekels" legal line — a
+  materially bigger surface than what this pass was scoped to, flagged
+  here for a later pass rather than expanded into now.
+- `ReverifyBanner` (`AppShell.tsx`) now gates on the flag itself, closing
+  the one call site (`wallet.tsx`) that rendered it unconditionally rather
+  than relying on every caller to remember to check; the in-app search
+  index no longer lists "Re-verify" as a destination while the flag is
+  off. **Deliberately left alone**: `lib/search.ts`'s several other
+  money-tagged entries (Top up, Money, Exchange money, Friends' "sending
+  shekels" copy) — pre-existing, broader than what was named, flagged
+  for the same later pass.
+- Home: the "Requests" split-repayment widget (`lib/widgets.ts`) is
+  filtered out of the widget catalogue entirely while the flag is off
+  (so it can't be re-pinned via For You customisation either), and
+  `ActiveNow`'s "Pending split… Pay now" card is gated the same way.
+  Both were previously invisible only because a fresh account has no
+  splits — a real pilot account with one would have seen them.
+- `reset-password.tsx`'s success copy ("Go to my wallet") now reads
+  generically and returns to `/`, since this screen is reachable from
+  both the student and staff sign-in flows and has no way to know which.
+- `reverify.tsx` itself (an explicit, already-labelled prototype/mockup)
+  was left untouched — it's preserved future functionality, not a bug —
+  its entry points were closed instead, per above.
+
+**4. Environment/token hygiene, checked.** `VITE_PAYMENTS_CLIENT_TOKEN`
+(tracked in `.env.development`) is confirmed genuinely client-safe, not a
+secret: its own consuming code (`src/lib/stripe.ts`) validates it must
+start with `pk_test_` or `pk_live_` before use, which is Stripe's own
+publishable-key prefix convention — publishable keys are designed to ship
+in client bundles and can only initialise Stripe.js, never charge a card
+or read account data (that requires the separate, never-committed
+`sk_...` secret key). The actual value was confirmed to start with
+`pk_test_` without printing it anywhere. **No rotation needed.** The
+`.env`/`.env.development` files remain tracked in git (pre-existing, not
+changed this pass) with only this token and Supabase's publishable/anon
+key in them — still worth untracking `.env*` from git as a hygiene
+improvement at some point, but not urgent since no secret is exposed.
+
+**Tests and build:** 10 new tests in `auth-redirect.test.ts`; 270/270
+passing overall, typecheck clean, lint clean on changed lines (the
+project's pre-existing CRLF line endings produce prettier noise across
+entire pre-existing files regardless of what changed — verified none of
+that noise falls on an actually-changed line), production build passes.
+
+**Remaining demo blockers, ranked** (unchanged from the release-readiness
+assessment unless noted): (1) only a Shekk operator can provision a
+programme/assign the first owner — still accepted as fine for pilot 1;
+(2) Settings' remaining money-specific toggles and the search index's
+other money-tagged entries — cosmetic now that the load-bearing surfaces
+are closed, not blockers; (3) link-only documents, in-app-only
+notifications, single-cohort auto-selection — unchanged, not blockers for
+a small pilot. Nothing new was found this pass beyond what's listed above.
+
 There is an internal **Shekk testing sandbox** programme
 (`src/lib/programme-testbed.server.ts`, `src/lib/programme-ops.functions.ts`)
 that operators can create/reset — useful for exercising Programme OS end to
@@ -636,7 +808,10 @@ geolocation test in this pass.
 onboarding flow — front door for signed-out users into Supabase auth, then a
 staged journey setup that writes to a server-side travel record on every
 step (resumable across devices). Identity verification is out of scope here
-and lives at `/verify` (not audited this pass).
+and lives at `/verify` (not audited this pass). As of the Pre-demo cleanup
+checkpoint, the wizard's "money" and "verify" chapters are skipped entirely
+while `MONEY_ENABLED` is off (same pattern already used to skip the
+programme "code" chapter for independents) — see that checkpoint below.
 
 `/setup` is **legacy/retired** — it now just redirects to `/before-you-fly`;
 its own header explains it was a duplicate of the same pre-arrival checklist
@@ -651,6 +826,18 @@ points, no Home prompts, no service tiles). Screens (`/wallet`, `/topup`,
 `/card`, `/exchange`, `/money`) remain reachable by direct URL. Underlying
 schema is real: `accounts`, `ledger_entries`, `holds`, `funding_events`,
 `kyc_documents`, `insurance_cards`, `subscriptions`, `split_bills/shares`.
+
+The Pre-demo cleanup checkpoint (below) closed several surfaces where that
+gate wasn't actually applied — `settings.tsx`'s Payments section (incl. a
+hardcoded fake card), the onboarding wizard's money/KYC chapters, a
+signed-out-landing money bullet, the `ReverifyBanner` component, a
+search-index entry for `/reverify`, and two Home widgets (the "Requests"
+split-repayment tile, `ActiveNow`'s pending-split card). All now gate on
+the same `MONEY_ENABLED` flag rather than being deleted, so switching money
+back on restores them with no further IA work — see that checkpoint for
+the full list and what's still deliberately untouched (Settings'
+Notifications/Security toggles, the in-app search's other money-tagged
+entries).
 
 Two payment providers are wired in, at different levels of readiness:
 

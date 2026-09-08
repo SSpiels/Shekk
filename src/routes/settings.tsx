@@ -21,6 +21,7 @@ import { useApp } from "@/lib/store";
 import type { Settings as SettingsShape, ThemePref } from "@/lib/store";
 import { ils } from "@/lib/mock";
 import { useOnboardedGate } from "@/lib/useOnboardedGate";
+import { MONEY_ENABLED } from "@/lib/flags";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -65,74 +66,81 @@ function SettingsPage() {
       <header className="bg-ink px-5 pb-7 pt-8 text-ink-foreground">
         <h1 className="text-2xl font-bold">Settings</h1>
         <p className="mt-1 text-sm opacity-70">
-          How Shekk behaves. Your account is always held in shekels — {ils(state.balance)} right now.
+          {MONEY_ENABLED
+            ? `How Shekk behaves. Your account is always held in shekels — ${ils(state.balance)} right now.`
+            : "How Shekk behaves — appearance, notifications, security and language."}
         </p>
       </header>
 
       <div className="space-y-5 px-4 py-5">
-        {/* Payments */}
-        <Section Icon={CreditCard} title="Payments" note="Your balance stays in shekels. This is what you pay from.">
-          <div className="p-4">
-            <p className="text-sm font-semibold">Default pay currency</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              {cur.flag} {cur.label} · {money(s.payCurrency, 1)} = ₪{shekkRate(s.payCurrency).toFixed(3)} at the Shekk
-              rate
-            </p>
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {CURRENCIES.map((c) => (
-                <button
-                  key={c.code}
-                  onClick={() => setSetting("payCurrency", c.code)}
-                  className={`tap rounded-xl px-2 py-2.5 text-sm font-semibold ${
-                    s.payCurrency === c.code ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
-                  }`}
-                >
-                  <span className="mr-1">{c.flag}</span>
-                  {c.code}
-                </button>
-              ))}
-            </div>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Balance reference: {refIn(s.payCurrency, state.balance)} — shown for reference; your balance stays in
-              shekels.
-            </p>
-          </div>
-
-          <Divider />
-          <Toggle
-            label="Auto top up"
-            hint={`Add money automatically when your balance drops below ${ils(s.autoTopUpFloor)}`}
-            checked={s.autoTopUp}
-            onChange={(v) => setSetting("autoTopUp", v)}
-          />
-          {s.autoTopUp ? (
-            <div className="border-t border-border px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Top up when below</p>
-              <div className="mt-2 flex gap-2">
-                {[50, 100, 200].map((f) => (
+        {/* Payments — money is paused for launch (see src/lib/flags.ts); no
+            balance, currency or card controls until it's switched back on. */}
+        {MONEY_ENABLED ? (
+          <Section Icon={CreditCard} title="Payments" note="Your balance stays in shekels. This is what you pay from.">
+            <div className="p-4">
+              <p className="text-sm font-semibold">Default pay currency</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {cur.flag} {cur.label} · {money(s.payCurrency, 1)} = ₪{shekkRate(s.payCurrency).toFixed(3)} at the
+                Shekk rate
+              </p>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {CURRENCIES.map((c) => (
                   <button
-                    key={f}
-                    onClick={() => setSetting("autoTopUpFloor", f)}
-                    className={`tap flex-1 rounded-xl py-2 text-sm font-semibold ${
-                      s.autoTopUpFloor === f ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+                    key={c.code}
+                    onClick={() => setSetting("payCurrency", c.code)}
+                    className={`tap rounded-xl px-2 py-2.5 text-sm font-semibold ${
+                      s.payCurrency === c.code ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
                     }`}
                   >
-                    {ils(f)}
+                    <span className="mr-1">{c.flag}</span>
+                    {c.code}
                   </button>
                 ))}
               </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Balance reference: {refIn(s.payCurrency, state.balance)} — shown for reference; your balance stays in
+                shekels.
+              </p>
             </div>
-          ) : null}
-          <Divider />
-          <Toggle
-            label="Hide balance on home"
-            hint="Blur your balance until you tap it"
-            checked={s.hideBalance}
-            onChange={(v) => setSetting("hideBalance", v)}
-          />
-          <Divider />
-          <RowLink to="/topup" label="Payment methods" hint="•••• 4417 · Visa" />
-        </Section>
+
+            <Divider />
+            <Toggle
+              label="Auto top up"
+              hint={`Add money automatically when your balance drops below ${ils(s.autoTopUpFloor)}`}
+              checked={s.autoTopUp}
+              onChange={(v) => setSetting("autoTopUp", v)}
+            />
+            {s.autoTopUp ? (
+              <div className="border-t border-border px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Top up when below
+                </p>
+                <div className="mt-2 flex gap-2">
+                  {[50, 100, 200].map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setSetting("autoTopUpFloor", f)}
+                      className={`tap flex-1 rounded-xl py-2 text-sm font-semibold ${
+                        s.autoTopUpFloor === f ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+                      }`}
+                    >
+                      {ils(f)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            <Divider />
+            <Toggle
+              label="Hide balance on home"
+              hint="Blur your balance until you tap it"
+              checked={s.hideBalance}
+              onChange={(v) => setSetting("hideBalance", v)}
+            />
+            <Divider />
+            <RowLink to="/topup" label="Payment methods" hint="•••• 4417 · Visa" />
+          </Section>
+        ) : null}
 
         {/* Appearance */}
         <Section Icon={Palette} title="Appearance">

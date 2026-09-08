@@ -52,6 +52,13 @@ function NotStaffScreen() {
       >
         Back to Shekk
       </Link>
+      <Link
+        to="/staff-login"
+        search={{ next: "/", code: undefined }}
+        className="text-xs font-semibold text-muted-foreground underline"
+      >
+        Have a staff invite code? Enter it
+      </Link>
     </div>
   );
 }

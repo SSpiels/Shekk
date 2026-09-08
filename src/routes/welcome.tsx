@@ -34,6 +34,7 @@ import { LOCATION_CITIES } from "@/lib/location";
 import { CURRENCIES, type CurrencyCode } from "@/lib/currencies";
 import { useProgramme, useTravel } from "@/lib/useProgramme";
 import { INTERESTS, type InterestId } from "@/lib/journey-interests";
+import { MONEY_ENABLED } from "@/lib/flags";
 
 export const Route = createFileRoute("/welcome")({
   ssr: false,
@@ -43,12 +44,12 @@ export const Route = createFileRoute("/welcome")({
       {
         name: "description",
         content:
-          "Shekk is one app for your money, your programme life and everything you need before you land in Israel. Set up your journey in a few taps: how you're coming, your dates, your city and your spending currency.",
+          "Shekk is one app for your programme life and everything you need before you land in Israel. Set up your journey in a few taps: how you're coming, your dates and your city.",
       },
       { property: "og:title", content: "Your Israel journey starts here" },
       {
         property: "og:description",
-        content: "One app for your money, your programme and everything before you land in Israel.",
+        content: "One app for your programme and everything before you land in Israel.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -59,8 +60,7 @@ export const Route = createFileRoute("/welcome")({
   component: Welcome,
 });
 
-const ONE_LINER =
-  "One app for your money, your programme life and everything you need sorted before you land.";
+const ONE_LINER = "One app for your programme life and everything you need sorted before you land.";
 
 const COUNTRIES = [
   "United States",
@@ -128,12 +128,19 @@ function Landing() {
                 title: "Land ready, not guessing",
                 body: "The arrival admin in the order it actually happens.",
               },
-              {
-                icon: Wallet,
-                step: "From day one",
-                title: "Spend in shekels",
-                body: "Add money in your home currency, see the rate before you confirm.",
-              },
+              MONEY_ENABLED
+                ? {
+                    icon: Wallet,
+                    step: "From day one",
+                    title: "Spend in shekels",
+                    body: "Add money in your home currency, see the rate before you confirm.",
+                  }
+                : {
+                    icon: Compass,
+                    step: "Every day",
+                    title: "Israel, sorted",
+                    body: "Guides, places and the practical stuff, right where you need them.",
+                  },
               {
                 icon: Building2,
                 step: "All the way through",
@@ -173,8 +180,9 @@ function Landing() {
             I already have an account
           </Link>
           <p className="text-center text-[11px] leading-relaxed text-muted-foreground">
-            Shekk is a shekel spending account for people coming to Israel from abroad. A one-time
-            identity check is required before you can spend.
+            {MONEY_ENABLED
+              ? "Shekk is a shekel spending account for people coming to Israel from abroad. A one-time identity check is required before you can spend."
+              : "Free to get started — no payment account required."}
           </p>
         </div>
       </div>
@@ -240,9 +248,14 @@ function Setup() {
     setStep(travel.onboardingCompletedAt ? "done" : (resumed ?? "style"));
   }, [fetched, step, travel]);
 
-  /** Independents never see the programme stage. */
+  /** Independents never see the programme stage; nobody sees the money/KYC
+   *  stages while MONEY_ENABLED is off — flipping that flag back on brings
+   *  them back with no other change needed here. */
   const flow = useMemo(
-    () => STEPS.filter((s) => s.id !== "code" || style === "programme"),
+    () =>
+      STEPS.filter((s) => s.id !== "code" || style === "programme").filter(
+        (s) => MONEY_ENABLED || (s.id !== "money" && s.id !== "verify"),
+      ),
     [style],
   );
   const index = Math.max(0, flow.findIndex((s) => s.id === step));
@@ -771,7 +784,7 @@ function Ready({
         : "Dates to confirm",
     },
     { label: "Based in", value: city || "To be decided" },
-    { label: "Adding money in", value: currency },
+    ...(MONEY_ENABLED ? [{ label: "Adding money in", value: currency }] : []),
   ];
 
   const focus = INTERESTS.filter((i) => interests.includes(i.id)).slice(0, 3);
@@ -781,7 +794,9 @@ function Ready({
       ? { to: "/programme" as const, label: "Add your programme code", hint: "Brings your timetable and contacts in" }
       : untilFlight !== null && untilFlight > 0
         ? { to: "/before-you-fly" as const, label: "Start before you fly", hint: "The arrival admin, in order" }
-        : { to: "/topup" as const, label: "Add your first money", hint: "Fund in your home currency" };
+        : MONEY_ENABLED
+          ? { to: "/topup" as const, label: "Add your first money", hint: "Fund in your home currency" }
+          : { to: "/israel" as const, label: "Explore Israel", hint: "Guides, maps and what's around you" };
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-2 space-y-4 px-5 pt-6 duration-500">
@@ -823,9 +838,11 @@ function Ready({
         <Link to="/israel" className="tap rounded-full bg-muted px-3.5 py-2 text-xs font-semibold">
           Explore Israel
         </Link>
-        <Link to="/verify" className="tap rounded-full bg-muted px-3.5 py-2 text-xs font-semibold">
-          Identity check
-        </Link>
+        {MONEY_ENABLED ? (
+          <Link to="/verify" className="tap rounded-full bg-muted px-3.5 py-2 text-xs font-semibold">
+            Identity check
+          </Link>
+        ) : null}
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ import { useUnreadChats } from "@/lib/useSocial";
 import { MiniAppSplash } from "@/components/MiniAppSplash";
 import { miniAppFor } from "@/lib/mini-apps";
 import { activeTabFor, keepsChrome, TAB_EXPLORE, TAB_PROGRAMME, TAB_TODAY, TAB_WHATS_ON, TAB_YOU } from "@/lib/nav";
+import { MONEY_ENABLED } from "@/lib/flags";
 
 
 
@@ -419,7 +420,7 @@ export function ScreenHeader({
 
 export function ReverifyBanner() {
   const { daysLeft } = useApp();
-  if (daysLeft === null) return null;
+  if (!MONEY_ENABLED || daysLeft === null) return null;
   return (
     <Link
       to="/reverify"
