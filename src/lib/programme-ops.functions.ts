@@ -503,6 +503,26 @@ export const staffNotifyOnboardingReminder = createServerFn({ method: "POST" })
     return notifyOnboardingReminder(context.supabase, context.userId, data.cohortId, data.studentIds);
   });
 
+/* ─────────────────────────────── Programme OS: Content ────────────────────────── */
+
+export const staffContentOverview = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ cohortId: uuid }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { staffContentOverview: overview } = await import("@/lib/programme-ops.server");
+    return overview(context.supabase, context.userId, data.cohortId);
+  });
+
+export const staffUpdateProgrammeInfo = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z.object({ cohortId: uuid, welcomeMessage: text(2000) }).parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { staffUpdateProgrammeInfo: update } = await import("@/lib/programme-ops.server");
+    return update(context.supabase, context.userId, data.cohortId, data.welcomeMessage ?? null);
+  });
+
 export const staffUpsertContent = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => contentInput.parse(d))

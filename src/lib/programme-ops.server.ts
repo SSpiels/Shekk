@@ -53,6 +53,7 @@ import {
   type StaffCalendarEvent,
   type StaffCalendarOverview,
   type StaffCommunicationsOverview,
+  type StaffContentOverview,
   type StaffContext,
   type StaffEventResponses,
   type StaffOnboardingOverview,
@@ -2145,6 +2146,167 @@ export async function notifyOnboardingReminder(
   );
   if (error) throw error;
   return { notified: validIds.length };
+}
+
+/**
+ * Programme OS: Content overview — the desktop configuration surface for
+ * checklist/documents/contacts/places, plus the cohort welcome message.
+ * Read-only and gated on being cohort staff at all (each write below is
+ * gated on its own specific permission). `groups` comes straight from
+ * programme_groups for this cohort, not the roster, so a group with no
+ * members yet is still a valid audience target — unlike Communications'/
+ * Calendar's `students[].groups`-derived list, which can only ever contain
+ * groups someone has already been added to.
+ */
+export async function staffContentOverview(
+  db: Db,
+  userId: string,
+  cohortId: string,
+): Promise<StaffContentOverview> {
+  const staff = await staffContext(db, userId, cohortId);
+  if (!staff) throw new Error("You do not have permission to do that");
+
+  const [cohortRes, groupRes, checklistRes, progressRes, docRes, contactRes, placeRes, audiences] =
+    await Promise.all([
+      db.from("programme_cohorts").select("welcome_message").eq("id", cohortId).maybeSingle(),
+      db.from("programme_groups").select("*").eq("cohort_id", cohortId).order("sort_order"),
+      db
+        .from("programme_checklist_items")
+        .select("*")
+        .eq("cohort_id", cohortId)
+        .order("sort_order"),
+      db.from("programme_checklist_progress").select("item_id, done"),
+      db.from("programme_documents").select("*").eq("cohort_id", cohortId).order("sort_order"),
+      db.from("programme_contacts").select("*").eq("cohort_id", cohortId).order("sort_order"),
+      db.from("programme_places").select("*").eq("cohort_id", cohortId).order("sort_order"),
+      loadAudiences(db, cohortId),
+    ]);
+
+  const groupRows = (groupRes.data ?? []) as Row[];
+  const groupIds = groupRows.map((g) => String(g["id"]));
+  const { data: memberRows } = groupIds.length
+    ? await db.from("programme_group_members").select("group_id").in("group_id", groupIds)
+    : { data: [] as Row[] };
+  const memberCount = new Map<string, number>();
+  for (const m of (memberRows ?? []) as Row[]) {
+    const gid = String(m["group_id"]);
+    memberCount.set(gid, (memberCount.get(gid) ?? 0) + 1);
+  }
+  const groups: ProgrammeGroup[] = groupRows.map((g) => ({
+    id: String(g["id"]),
+    name: String(g["name"]),
+    description: s(g, "description"),
+    memberCount: memberCount.get(String(g["id"])) ?? 0,
+  }));
+
+  const checklistItemIds = new Set(
+    ((checklistRes.data ?? []) as Row[]).map((c) => String(c["id"])),
+  );
+  const doneCounts = new Map<string, number>();
+  for (const p of (progressRes.data ?? []) as Row[]) {
+    if (!p["done"]) continue;
+    const id = String(p["item_id"]);
+    if (!checklistItemIds.has(id)) continue;
+    doneCounts.set(id, (doneCounts.get(id) ?? 0) + 1);
+  }
+
+  const checklist: ChecklistItem[] = ((checklistRes.data ?? []) as Row[]).map((c) => {
+    const id = String(c["id"]);
+    return {
+      id,
+      itemKey: String(c["item_key"]),
+      title: String(c["title"]),
+      details: s(c, "details"),
+      dueOn: s(c, "due_on"),
+      required: c["required"] == null ? true : Boolean(c["required"]),
+      actionUrl: s(c, "action_url"),
+      featureKey: s(c, "feature_key"),
+      audience: audienceFor(audiences, "checklist_item", id, s(c, "audience_kind")),
+      done: false,
+      doneCount: doneCounts.get(id) ?? 0,
+    };
+  });
+
+  const documents: ProgrammeDoc[] = ((docRes.data ?? []) as Row[]).map((d) => {
+    const id = String(d["id"]);
+    return {
+      id,
+      label: String(d["label"]),
+      description: s(d, "description"),
+      linkUrl: s(d, "link_url"),
+      storagePath: s(d, "storage_path"),
+      category: String(d["category"] ?? "other"),
+      audience: audienceFor(audiences, "document", id, s(d, "audience_kind")),
+    };
+  });
+
+  const contacts: ProgrammeContactRow[] = ((contactRes.data ?? []) as Row[]).map((c) => {
+    const id = String(c["id"]);
+    return {
+      id,
+      name: String(c["name"]),
+      role: s(c, "role"),
+      category: String(c["category"] ?? "other"),
+      phone: s(c, "phone"),
+      whatsapp: s(c, "whatsapp"),
+      email: s(c, "email"),
+      notes: s(c, "notes"),
+      availability: s(c, "availability"),
+      isEmergency: Boolean(c["is_emergency"]),
+      audience: audienceFor(audiences, "contact", id, s(c, "audience_kind")),
+    };
+  });
+
+  const places: ProgrammePlace[] = ((placeRes.data ?? []) as Row[]).map((p) => {
+    const id = String(p["id"]);
+    return {
+      id,
+      label: String(p["label"]),
+      category: String(p["category"] ?? "other"),
+      notes: s(p, "notes"),
+      meetingInstructions: s(p, "meeting_instructions"),
+      googlePlaceId: s(p, "google_place_id"),
+      address: s(p, "address"),
+      latitude: n(p, "latitude"),
+      longitude: n(p, "longitude"),
+      audience: audienceFor(audiences, "place", id, s(p, "audience_kind")),
+    };
+  });
+
+  return {
+    cohortId,
+    welcomeMessage: s((cohortRes.data ?? {}) as Row, "welcome_message"),
+    groups,
+    checklist,
+    documents,
+    contacts,
+    places,
+  };
+}
+
+/**
+ * The one field Content edits directly on the cohort itself, rather than a
+ * checklist/document/contact/place row: the welcome message shown at the top
+ * of the student's Programme "Today" tab (routes/programme.index.tsx renders
+ * hub.welcomeMessage as-is). programme_cohorts carries no staff RLS write
+ * policy — only "Members/Staff read their cohort(s)" — so, like
+ * notifyOnboardingReminder, this proves staff permission first and then
+ * writes through the service role rather than the caller's own client.
+ */
+export async function staffUpdateProgrammeInfo(
+  db: Db,
+  userId: string,
+  cohortId: string,
+  welcomeMessage: string | null,
+) {
+  await requireStaff(db, userId, cohortId, "participants");
+  const service = await adminDb();
+  const { error } = await service
+    .from("programme_cohorts")
+    .update({ welcome_message: welcomeMessage } as never)
+    .eq("id", cohortId);
+  if (error) throw new Error(error.message || "We couldn't save that");
+  return { ok: true };
 }
 
 export type SimpleContentInput = {

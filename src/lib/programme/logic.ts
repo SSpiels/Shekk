@@ -1075,6 +1075,23 @@ export type StaffEventResponses = {
 };
 
 /**
+ * Programme OS: Content overview. `groups` is every group in the cohort from
+ * `programme_groups` directly — unlike Communications/Calendar's roster-derived
+ * group list (built from `students[].groups`), this doesn't omit a group with
+ * no members yet, so staff can target content at a group before anyone's
+ * assigned to it.
+ */
+export type StaffContentOverview = {
+  cohortId: string;
+  welcomeMessage: string | null;
+  groups: ProgrammeGroup[];
+  checklist: ChecklistItem[];
+  documents: ProgrammeDoc[];
+  contacts: ProgrammeContactRow[];
+  places: ProgrammePlace[];
+};
+
+/**
  * Given an event's audience and the cohort roster, split eligible members
  * into going/maybe/not-going/no-response. "No response" is an eligible
  * member with no programme_event_rsvps row at all — never confused with

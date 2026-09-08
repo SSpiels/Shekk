@@ -1,7 +1,8 @@
 # Current state
 
 **Last audited:** 2026-09-08
-**Branch audited:** `feature/programme-os-v1`; date-stabilisation checkpoint after `1cd70c3`.
+**Branch audited:** `feature/programme-os-v1`; Content module checkpoint after the
+date-stabilisation checkpoint (`ade0992`).
 
 This is the only document in this set that's expected to go stale — treat it
 as a snapshot, not a guarantee. If you find it disagrees with the code, trust
@@ -47,7 +48,7 @@ session context are **implemented**. Per V1 module:
 | Onboarding | **Implemented, DB-backed** | `staff/onboarding.tsx` — cohort-wide dashboard via `useStaffOnboardingOverview`, plus a working reminder-notify mutation (`useNotifyOnboardingReminder`). |
 | Communications | **Implemented, DB-backed** | Publishing, audience targeting, acknowledgement rollups and eligible-student drill-down using the existing announcement engine. Notifications are in-app only. |
 | Calendar | **Implemented, DB-backed** | Agenda/Week/Month, create/edit/delete, delay/move/cancel, change history and audience-aware RSVP breakdown using the existing event engine. |
-| Content | **Stub/placeholder** | Same. |
+| Content | **Implemented, DB-backed** | `staff/content.tsx` — welcome message, checklist, documents, contacts and places, create/edit/delete, on the existing content/audience engine. See "Content module" below. |
 | Team | **Stub/placeholder** | Placeholder text explicitly says it's planned for "Phase 4 — built on the existing owner \| staff + permissions model." |
 | Settings | **Stub/placeholder** | Same pattern as the above. |
 
@@ -79,11 +80,61 @@ session context are **implemented**. Per V1 module:
 - Reopening the desktop editor now remounts it, preventing stale form state on
   repeated edits. Real repeated-hour history changes show both UTC offsets.
 - Known V1 limits remain: workspace is selected from the latest staff grant;
-  current cohort from creation order; roster-derived audience pickers omit empty
-  groups. Content, Team and Settings remain placeholders.
+  current cohort from creation order. Communications' and Calendar's audience
+  pickers still derive groups from `students[].groups`, so a group with no
+  members yet won't appear there — Content's picker was fixed instead (see
+  below); Communications/Calendar were left alone as out of scope for this pass.
+  Team and Settings remain placeholders.
 - Git reconciliation is pending separately: remote main's five unique commits are
   generated Supabase type parentheses, generated route ordering, a Resend pin to
   6.25.0/Bun lock update and two merges. No infrastructure migration is implied.
+
+### Content module checkpoint
+
+- `staff/content.tsx`: five tabs — Programme information, Documents, Contacts,
+  Places, Checklist — over the existing engine
+  (`programme-ops.server.ts`'s `upsertContent`/`deleteContent`/
+  `seedDefaultChecklist`, already used by the mobile staff `ContentEditor` in
+  `components/programme/Staff.tsx`). No second content model was introduced.
+  Desktop adds one real capability mobile never had: editing an existing row
+  in place, not just create/delete — `upsertContent` already supported an
+  `id` for updates, nothing there needed to change.
+- New: `staffContentOverview` (a lean, Content-scoped read — checklist/
+  documents/contacts/places plus the full cohort group list — instead of
+  reusing the much heavier participant-shaped `readHub`) and
+  `staffUpdateProgrammeInfo` (writes `programme_cohorts.welcome_message`,
+  the text already shown verbatim at the top of the student's Programme
+  "Today" tab — `programme_cohorts` has no staff RLS write policy, so this
+  follows the same proved-permission-then-service-role pattern as
+  `notifyOnboardingReminder`, not a new one).
+- Content's audience picker uses `programme_groups` directly (via
+  `staffContentOverview`), so a group with no members yet is still a valid
+  target — unlike Communications'/Calendar's roster-derived list, which was
+  left as-is (out of scope for this pass, noted above).
+- Documents are link-only in V1: `programme_documents.storage_path` /
+  `mime_type` / `byte_size` columns exist, but no storage bucket or policy
+  was ever created for programme documents (unlike `kyc-documents`,
+  `insurance-cards`, `member-documents`, which are all real per-user
+  buckets). The editor is honest about this — a hint under the Link field
+  says native upload isn't part of V1 — rather than showing an upload
+  control that doesn't work.
+- Checklist items with student completion history: deleting one still
+  cascades their `programme_checklist_progress` rows at the database level
+  (`ON DELETE CASCADE`, pre-existing schema, not touched here) — the editor
+  now shows the real completion count and, when it's non-zero, a delete
+  confirmation naming exactly how many students' progress records will be
+  removed, rather than deleting silently. It does not prevent the delete.
+- Verification: 206 tests pass (no new ones added — this module has no
+  date/timezone logic worth unit-testing beyond what already exists;
+  correctness was checked live instead), typecheck and changed-line lint
+  pass, and the production build passes. Live-verified in Shekk Test
+  Programme via the desktop UI, logged in as the sandbox's staff+student
+  account: created, viewed and deleted a checklist item, watched it appear
+  in and disappear from `/programme/info` without a manual refresh (React
+  Query cache invalidation), confirmed the audience picker offers a group
+  with zero members, and read through existing Documents/Contacts/Places
+  data rendering correctly. No disposable test document/contact/place was
+  created — only the one checklist item, which was deleted afterward.
 
 There is an internal **Shekk testing sandbox** programme
 (`src/lib/programme-testbed.server.ts`, `src/lib/programme-ops.functions.ts`)
