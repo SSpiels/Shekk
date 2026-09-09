@@ -43,7 +43,9 @@ async function call<T>(
   }
   const res = await fetch(`${host}${path}`, { ...init, headers: headers(init.fieldMask) });
   if (res.status === 403) {
-    const body = (await res.json().catch(() => ({}))) as { error?: { details?: Array<{ reason?: string }> } };
+    const body = (await res.json().catch(() => ({}))) as {
+      error?: { status?: string; details?: Array<{ reason?: string }> };
+    };
     const reason = body.error?.details?.find((d) => d.reason)?.reason;
     if (reason === "API_KEY_HTTP_REFERRER_BLOCKED")
       throw new Error(
@@ -51,6 +53,16 @@ async function call<T>(
       );
     if (reason === "API_KEY_SERVICE_BLOCKED")
       throw new Error("Google Maps server key does not allow this API. Add Places and Routes to the key's allowed APIs.");
+    // Places API (New) and Routes API return a bare PERMISSION_DENIED with no
+    // `details` array for this exact case — confirmed live: same key, same
+    // project, working fine against the legacy Geocoding API (which spells
+    // out "check the API restrictions settings of your API key"). A key made
+    // before "Places API (New)" existed as a separate item in the API
+    // Library almost always has this API restriction gap.
+    if (body.error?.status === "PERMISSION_DENIED")
+      throw new Error(
+        'Google Maps server key doesn\'t allow this API. In Google Cloud Console → Credentials, add "Places API (New)" and "Routes API" to this key\'s API restrictions — a key made before those existed as separate items often only has the older Places API checked.',
+      );
     throw new Error("Google Maps denied the request (403). Check the server key restrictions.");
   }
   if (!res.ok) {

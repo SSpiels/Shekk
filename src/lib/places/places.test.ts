@@ -349,6 +349,24 @@ describe("Google row mapping", () => {
     expect(leg?.transit?.steps[1]).toMatchObject({ line: "Light Rail Red", vehicle: "LIGHT_RAIL" });
   });
 
+  it("gives an actionable message for a key whose API restrictions are missing Places/Routes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: false,
+        status: 403,
+        json: async () => ({
+          error: { code: 403, message: "The caller does not have permission", status: "PERMISSION_DENIED" },
+        }),
+        text: async () => "",
+      })),
+    );
+    const { nearbyRows } = await import("./google.server");
+    await expect(
+      nearbyRows({ lat: 31.7, lon: 35.2, radiusM: 1000, placeTypes: ["gym"] }),
+    ).rejects.toThrow(/API restrictions/i);
+  });
+
   it("refuses to call Google when the connection is missing", async () => {
     delete process.env["GOOGLE_MAPS_API_KEY"];
     const { nearbyRows } = await import("./google.server");
