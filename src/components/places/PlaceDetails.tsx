@@ -102,6 +102,8 @@ export function PlaceHours({ place }: { place: Place }) {
 
 export function GettingThere({ travel }: { travel: TravelSet | null }) {
   if (!travel || (!travel.walk && !travel.transit && !travel.drive)) return null;
+  const transfers = travel.transit?.transit?.transfers;
+  const steps = travel.transit?.transit?.steps;
   return (
     <Card className="space-y-2">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Getting there</p>
@@ -114,6 +116,7 @@ export function GettingThere({ travel }: { travel: TravelSet | null }) {
         {travel.transit && (
           <span className="inline-flex items-center gap-1.5">
             <Bus className="size-4 text-muted-foreground" /> {travel.transit.minutes} min by bus
+            {transfers !== undefined ? ` · ${transfers === 0 ? "direct" : `${transfers} transfer${transfers > 1 ? "s" : ""}`}` : ""}
           </span>
         )}
         {travel.drive && (
@@ -122,8 +125,25 @@ export function GettingThere({ travel }: { travel: TravelSet | null }) {
           </span>
         )}
       </div>
+      {steps?.length ? (
+        <ul className="space-y-1.5 border-t border-border pt-2">
+          {steps.map((s, i) => (
+            <li key={i} className="text-xs text-muted-foreground">
+              <span className="font-semibold text-foreground">{s.line ?? "Transit"}</span>
+              {s.departureStop && s.arrivalStop ? ` · ${s.departureStop} → ${s.arrivalStop}` : null}
+              {s.departureTime ? ` · ${transitTimeLabel(s.departureTime)}` : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </Card>
   );
+}
+
+function transitTimeLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
 /**

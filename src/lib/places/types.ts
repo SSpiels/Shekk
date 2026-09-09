@@ -103,7 +103,26 @@ export type Place = PlaceRef & {
 
 export type TravelMode = "WALK" | "TRANSIT" | "DRIVE";
 
-export type TravelLeg = { mode: TravelMode; minutes: number; km: number };
+/** One bus/train/light-rail leg of a transit journey, when Google provides it. */
+export type TransitStep = {
+  /** Line name, e.g. "Bus 18" or "Red Line" — whatever Google's transit line calls itself. */
+  line: string | null;
+  /** "BUS", "RAIL", "LIGHT_RAIL", etc. */
+  vehicle: string | null;
+  departureStop: string | null;
+  arrivalStop: string | null;
+  /** ISO timestamps, when the operator's schedule data includes them. */
+  departureTime: string | null;
+  arrivalTime: string | null;
+};
+
+export type TravelLeg = {
+  mode: TravelMode;
+  minutes: number;
+  km: number;
+  /** TRANSIT only, and only when Google's data includes step-level detail. */
+  transit?: { transfers: number; steps: TransitStep[] };
+};
 
 /** All the ways of getting there we could resolve. Any leg may be missing. */
 export type TravelSet = {

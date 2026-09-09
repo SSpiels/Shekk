@@ -8,7 +8,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { categoryFor, categorySet, placeTypesFor, PLACE_CATEGORIES } from "./taxonomy";
-import { coordKey, nearbyKey, roundCoord } from "./format";
+import { coordKey, directionsUrl, nearbyKey, roundCoord, textDirectionsUrl } from "./format";
 import { dedupe, placesCacheSize, placesInflightSize, resetPlacesCache } from "./cache.server";
 import { mergeMeta, toMeta } from "./meta.server";
 import type { Place } from "./types";
@@ -30,6 +30,35 @@ describe("taxonomy", () => {
 
   it("respects the requested type limit", () => {
     expect(placeTypesFor(PLACE_CATEGORIES, 5)).toHaveLength(5);
+  });
+});
+
+describe("directions links — no Google credentials required", () => {
+  it("builds a coordinate-based link with the place id", () => {
+    const url = directionsUrl({ id: "abc", lat: 31.7, lon: 35.2 });
+    expect(url).toBe(
+      "https://www.google.com/maps/dir/?api=1&destination=31.7,35.2&destination_place_id=abc",
+    );
+  });
+
+  it("prefers Google's own maps URI when the place has one, without appending an origin", () => {
+    const url = directionsUrl(
+      { id: "abc", lat: 31.7, lon: 35.2, mapsUri: "https://maps.google.com/?cid=123" },
+      "Jerusalem",
+    );
+    expect(url).toBe("https://maps.google.com/?cid=123");
+  });
+
+  it("includes an origin when one is given", () => {
+    const url = directionsUrl({ id: "abc", lat: 31.7, lon: 35.2 }, "Jerusalem");
+    expect(url).toContain("&origin=Jerusalem&destination=");
+  });
+
+  it("builds a text-only directions link with no place data at all", () => {
+    const url = textDirectionsUrl("Ben Gurion Airport", "Tel Aviv");
+    expect(url).toBe(
+      "https://www.google.com/maps/dir/?api=1&origin=Tel%20Aviv&destination=Ben%20Gurion%20Airport",
+    );
   });
 });
 
@@ -145,7 +174,6 @@ describe("Google row mapping", () => {
   const env = { ...process.env };
 
   beforeEach(() => {
-    process.env["LOVABLE_API_KEY"] = "test-lovable";
     process.env["GOOGLE_MAPS_API_KEY"] = "test-connection";
   });
 
@@ -215,8 +243,114 @@ describe("Google row mapping", () => {
     expect(mask).toContain("photos.googleMapsUri");
   });
 
+  it("calls Google directly, not through a third-party gateway", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ places: [] }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { nearbyRows } = await import("./google.server");
+    await nearbyRows({ lat: 31.7, lon: 35.2, radiusM: 1000, placeTypes: ["gym"] });
+    const [url, init] = fetchMock.mock.calls[0]! as [
+      string,
+      { headers: Record<string, string> },
+    ];
+    expect(url).toBe("https://places.googleapis.com/v1/places:searchNearby");
+    expect(init.headers["X-Goog-Api-Key"]).toBe("test-connection");
+    expect(init.headers["Authorization"]).toBeUndefined();
+  });
+
+  it("requests transit step detail only for TRANSIT legs", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ routes: [{ duration: "600s", distanceMeters: 2000 }] }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { travelLeg } = await import("./google.server");
+
+    await travelLeg({ fromLat: 31.7, fromLon: 35.2, toLat: 31.8, toLon: 35.3, mode: "WALK" });
+    const walkInit = fetchMock.mock.calls[0]![1] as unknown as { headers: Record<string, string> };
+    expect(walkInit.headers["X-Goog-FieldMask"]).not.toContain("transitDetails");
+
+    await travelLeg({ fromLat: 31.7, fromLon: 35.2, toLat: 31.8, toLon: 35.3, mode: "TRANSIT" });
+    const transitInit = fetchMock.mock.calls[1]![1] as unknown as { headers: Record<string, string> };
+    expect(transitInit.headers["X-Goog-FieldMask"]).toContain("transitDetails");
+    expect(fetchMock.mock.calls[1]![0]).toBe(
+      "https://routes.googleapis.com/directions/v2:computeRoutes",
+    );
+  });
+
+  it("turns a transit route's steps into departure/arrival stops and a transfer count", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          routes: [
+            {
+              duration: "1800s",
+              distanceMeters: 8000,
+              legs: [
+                {
+                  steps: [
+                    { travelMode: "WALK" },
+                    {
+                      travelMode: "TRANSIT",
+                      transitDetails: {
+                        stopDetails: {
+                          departureStop: { name: "King George St" },
+                          arrivalStop: { name: "Central Station" },
+                          departureTime: "2026-09-09T09:55:00Z",
+                          arrivalTime: "2026-09-09T10:10:00Z",
+                        },
+                        transitLine: { name: "Bus 18", vehicle: { type: "BUS" } },
+                      },
+                    },
+                    {
+                      travelMode: "TRANSIT",
+                      transitDetails: {
+                        stopDetails: {
+                          departureStop: { name: "Central Station" },
+                          arrivalStop: { name: "Old City" },
+                          departureTime: "2026-09-09T10:15:00Z",
+                          arrivalTime: "2026-09-09T10:25:00Z",
+                        },
+                        transitLine: { name: "Light Rail Red", vehicle: { type: "LIGHT_RAIL" } },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        }),
+      })),
+    );
+    const { travelLeg } = await import("./google.server");
+    const leg = await travelLeg({
+      fromLat: 31.7,
+      fromLon: 35.2,
+      toLat: 31.8,
+      toLon: 35.3,
+      mode: "TRANSIT",
+    });
+
+    expect(leg?.minutes).toBe(30);
+    expect(leg?.transit?.transfers).toBe(1);
+    expect(leg?.transit?.steps).toHaveLength(2);
+    expect(leg?.transit?.steps[0]).toMatchObject({
+      line: "Bus 18",
+      departureStop: "King George St",
+      arrivalStop: "Central Station",
+    });
+    expect(leg?.transit?.steps[1]).toMatchObject({ line: "Light Rail Red", vehicle: "LIGHT_RAIL" });
+  });
+
   it("refuses to call Google when the connection is missing", async () => {
-    delete process.env["LOVABLE_API_KEY"];
+    delete process.env["GOOGLE_MAPS_API_KEY"];
     const { nearbyRows } = await import("./google.server");
     await expect(nearbyRows({ lat: 31.7, lon: 35.2, radiusM: 1000, placeTypes: ["gym"] })).rejects.toThrow(
       /Google Maps connection/i,

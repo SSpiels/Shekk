@@ -140,9 +140,8 @@ export const MINI_APPS: MiniApp[] = [
   {
     path: "/explore/transit",
     id: "transit",
-    status: "planned",
-    name: "Transit",
-    tagline: "Buses, trains and Rav-Kav",
+    name: "Getting Around",
+    tagline: "Plan a journey, anywhere in Israel",
     emoji: "🚌",
     Icon: BusFront,
     iconScale: 0.44,

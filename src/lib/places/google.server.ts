@@ -1,37 +1,47 @@
 /**
  * Shekk Location Platform — the single Google gateway. Server only.
  *
- * Places (New) and the Routes API through the Lovable connector gateway, so no
- * Google key ever reaches the browser. This is the ONLY file in Shekk allowed
- * to talk to Google. Everything else goes through `api.server.ts`.
+ * Calls Places (New) and the Routes API directly with a server-side API key —
+ * no Google key ever reaches the browser. This is the ONLY file in Shekk
+ * allowed to talk to Google. Everything else goes through `api.server.ts`.
+ *
+ * Previously routed through a Lovable-hosted connector gateway
+ * (connector-gateway.lovable.dev), the same pattern that turned out to be dead
+ * for Google/Apple sign-in and unverified for Stripe once this project moved
+ * off Lovable hosting. Calling Google directly here matches how Airwallex is
+ * already called elsewhere in this codebase — one fewer thing to go dark.
  *
  * Google content stays transient: rows returned here are cached in memory for
  * minutes and never written to the database. Only the place id is storable.
  */
 
-import type { PhotoRef, Place, TravelLeg, TravelMode } from "./types";
+import type { PhotoRef, Place, TransitStep, TravelLeg, TravelMode } from "./types";
 
-const GATEWAY = "https://connector-gateway.lovable.dev/google_maps";
+const PLACES_HOST = "https://places.googleapis.com";
+const ROUTES_HOST = "https://routes.googleapis.com";
 
 export function googleConfigured() {
-  return Boolean(process.env["LOVABLE_API_KEY"] && process.env["GOOGLE_MAPS_API_KEY"]);
+  return Boolean(process.env["GOOGLE_MAPS_API_KEY"]);
 }
 
 function headers(fieldMask?: string) {
   const h: Record<string, string> = {
-    Authorization: `Bearer ${process.env["LOVABLE_API_KEY"]}`,
-    "X-Connection-Api-Key": process.env["GOOGLE_MAPS_API_KEY"]!,
+    "X-Goog-Api-Key": process.env["GOOGLE_MAPS_API_KEY"]!,
     "Content-Type": "application/json",
   };
   if (fieldMask) h["X-Goog-FieldMask"] = fieldMask;
   return h;
 }
 
-async function gateway<T>(path: string, init: RequestInit & { fieldMask?: string }): Promise<T> {
+async function call<T>(
+  host: string,
+  path: string,
+  init: RequestInit & { fieldMask?: string },
+): Promise<T> {
   if (!googleConfigured()) {
     throw new Error("Places needs the Google Maps connection — it isn't linked yet.");
   }
-  const res = await fetch(`${GATEWAY}${path}`, { ...init, headers: headers(init.fieldMask) });
+  const res = await fetch(`${host}${path}`, { ...init, headers: headers(init.fieldMask) });
   if (res.status === 403) {
     const body = (await res.json().catch(() => ({}))) as { error?: { details?: Array<{ reason?: string }> } };
     const reason = body.error?.details?.find((d) => d.reason)?.reason;
@@ -45,7 +55,7 @@ async function gateway<T>(path: string, init: RequestInit & { fieldMask?: string
   }
   if (!res.ok) {
     const body = await res.text();
-    console.error(`Google Maps gateway failed [${res.status}]: ${body}`);
+    console.error(`Google Maps request failed [${res.status}]: ${body}`);
     throw new Error(`Google Maps request failed [${res.status}]: ${body}`);
   }
   return (await res.json()) as T;
@@ -143,7 +153,7 @@ export async function nearbyRows(input: {
   radiusM: number;
   placeTypes: string[];
 }): Promise<Place[]> {
-  const json = await gateway<{ places?: PlaceRow[] }>("/places/v1/places:searchNearby", {
+  const json = await call<{ places?: PlaceRow[] }>(PLACES_HOST, "/v1/places:searchNearby", {
     method: "POST",
     fieldMask: LIST_MASK,
     body: JSON.stringify({
@@ -168,7 +178,7 @@ export async function searchRows(input: { query: string; lat?: number; lon?: num
       circle: { center: { latitude: input.lat, longitude: input.lon }, radius: 30_000 },
     };
   }
-  const json = await gateway<{ places?: PlaceRow[] }>("/places/v1/places:searchText", {
+  const json = await call<{ places?: PlaceRow[] }>(PLACES_HOST, "/v1/places:searchText", {
     method: "POST",
     fieldMask: LIST_MASK,
     body: JSON.stringify(body),
@@ -177,7 +187,7 @@ export async function searchRows(input: { query: string; lat?: number; lon?: num
 }
 
 export async function detailRow(placeId: string): Promise<Place> {
-  const json = await gateway<PlaceRow>(`/places/v1/places/${encodeURIComponent(placeId)}`, {
+  const json = await call<PlaceRow>(PLACES_HOST, `/v1/places/${encodeURIComponent(placeId)}`, {
     method: "GET",
     fieldMask: DETAIL_MASK,
   });
@@ -190,8 +200,9 @@ export async function detailRow(placeId: string): Promise<Place> {
  */
 export async function photoUrl(photoName: string, maxWidthPx: number): Promise<string | null> {
   try {
-    const json = await gateway<{ photoUri?: string }>(
-      `/places/v1/${photoName}/media?maxWidthPx=${maxWidthPx}&skipHttpRedirect=true`,
+    const json = await call<{ photoUri?: string }>(
+      PLACES_HOST,
+      `/v1/${photoName}/media?maxWidthPx=${maxWidthPx}&skipHttpRedirect=true`,
       { method: "GET" },
     );
     return json.photoUri ?? null;
@@ -199,6 +210,40 @@ export async function photoUrl(photoName: string, maxWidthPx: number): Promise<s
     console.error("place photo failed", e);
     return null;
   }
+}
+
+type TransitStepRow = {
+  travelMode?: string;
+  transitDetails?: {
+    stopDetails?: {
+      departureStop?: { name?: string };
+      arrivalStop?: { name?: string };
+      departureTime?: string;
+      arrivalTime?: string;
+    };
+    transitLine?: { name?: string; nameShort?: string; vehicle?: { type?: string } };
+  };
+};
+
+const TRANSIT_FIELD_MASK =
+  "routes.duration,routes.distanceMeters,routes.legs.steps.travelMode,routes.legs.steps.transitDetails";
+
+/** Bus/train legs only, in order, from a computeRoutes response. */
+function transitStepsFrom(steps: TransitStepRow[] | undefined): TransitStep[] {
+  return (steps ?? [])
+    .filter((s) => s.travelMode === "TRANSIT" && s.transitDetails)
+    .map((s) => {
+      const d = s.transitDetails!;
+      const line = d.transitLine;
+      return {
+        line: line?.name ?? line?.nameShort ?? line?.vehicle?.type ?? null,
+        vehicle: line?.vehicle?.type ?? null,
+        departureStop: d.stopDetails?.departureStop?.name ?? null,
+        arrivalStop: d.stopDetails?.arrivalStop?.name ?? null,
+        departureTime: d.stopDetails?.departureTime ?? null,
+        arrivalTime: d.stopDetails?.arrivalTime ?? null,
+      };
+    });
 }
 
 /** One travel leg. Never throws — travel info is a nicety, not the feature. */
@@ -210,25 +255,35 @@ export async function travelLeg(input: {
   mode: TravelMode;
 }): Promise<TravelLeg | null> {
   try {
-    const json = await gateway<{ routes?: { duration?: string; distanceMeters?: number }[] }>(
-      "/routes/directions/v2:computeRoutes",
-      {
-        method: "POST",
-        fieldMask: "routes.duration,routes.distanceMeters",
-        body: JSON.stringify({
-          origin: { location: { latLng: { latitude: input.fromLat, longitude: input.fromLon } } },
-          destination: { location: { latLng: { latitude: input.toLat, longitude: input.toLon } } },
-          travelMode: input.mode,
-        }),
-      },
-    );
+    const json = await call<{
+      routes?: {
+        duration?: string;
+        distanceMeters?: number;
+        legs?: { steps?: TransitStepRow[] }[];
+      }[];
+    }>(ROUTES_HOST, "/directions/v2:computeRoutes", {
+      method: "POST",
+      // Step-level transit detail is only meaningful — and only requested —
+      // for TRANSIT, so a walk or drive leg stays on the cheaper field mask.
+      fieldMask:
+        input.mode === "TRANSIT" ? TRANSIT_FIELD_MASK : "routes.duration,routes.distanceMeters",
+      body: JSON.stringify({
+        origin: { location: { latLng: { latitude: input.fromLat, longitude: input.fromLon } } },
+        destination: { location: { latLng: { latitude: input.toLat, longitude: input.toLon } } },
+        travelMode: input.mode,
+      }),
+    });
     const route = json.routes?.[0];
     if (!route?.duration) return null;
     const seconds = Number(String(route.duration).replace("s", ""));
+    const steps = transitStepsFrom(route.legs?.[0]?.steps);
     return {
       mode: input.mode,
       minutes: Math.max(1, Math.round(seconds / 60)),
       km: Math.round(((route.distanceMeters ?? 0) / 1000) * 10) / 10,
+      ...(input.mode === "TRANSIT" && steps.length
+        ? { transit: { transfers: Math.max(0, steps.length - 1), steps } }
+        : {}),
     };
   } catch (e) {
     console.error("travel leg failed", e);

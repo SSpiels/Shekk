@@ -1,11 +1,12 @@
 # Current state
 
-**Last audited:** 2026-09-08
-**Branch audited:** `feature/programme-os-v1`; Pre-demo cleanup & staff-auth
-checkpoint, after the Pilot onboarding & Settings checkpoint, after the
-Integration & Overview checkpoint, after the Team checkpoint, after the
-Content data-integrity & security checkpoint, after the Content module
-checkpoint, after the date-stabilisation checkpoint (`ade0992`).
+**Last audited:** 2026-09-09
+**Branch audited:** `feature/programme-os-v1`; Getting Around checkpoint,
+after the Pre-demo cleanup & staff-auth checkpoint, after the Pilot
+onboarding & Settings checkpoint, after the Integration & Overview
+checkpoint, after the Team checkpoint, after the Content data-integrity &
+security checkpoint, after the Content module checkpoint, after the
+date-stabilisation checkpoint (`ade0992`).
 
 This is the only document in this set that's expected to go stale — treat it
 as a snapshot, not a guarantee. If you find it disagrees with the code, trust
@@ -770,7 +771,106 @@ built against Gett's API, waiting on live partner credentials"); most
 practical-info tiles (shuk guide, hospitals, safety, arnona) are `guide`
 (informational, not a live integration); several are `planned`. Treat the
 `status` field in those files as the authoritative answer for any individual
-tile rather than guessing from the tile's name.
+tile rather than guessing from the tile's name. As of the Getting Around
+checkpoint below, "Transit" is no longer `planned` — see that section for
+what changed and what's still credential-gated.
+
+### Getting Around checkpoint
+
+Turned `/explore/transit` from an honest placeholder into a real journey
+planner, reusing the existing "Shekk Location Platform"
+(`src/lib/places/`) rather than building new routing or a second places
+system. No new module, no affiliate work, Gett untouched.
+
+**What was actually found** (code exists, almost none of it was live):
+the Location Platform (search, nearby, place detail, saved places, photo
+attribution, and — importantly — `travelTo()`, which already called
+Google's Routes API for walk/transit/drive duration in one shot) was
+real, tested code that had never been wired into a journey-planning
+screen, **and was unreachable regardless**: `google.server.ts` called
+Google only through `connector-gateway.lovable.dev/google_maps`, the
+same Lovable-hosted proxy pattern already known dead (Google/Apple
+sign-in) or unverified (Stripe) elsewhere in this codebase, and neither
+`GOOGLE_MAPS_API_KEY` nor the old `LOVABLE_API_KEY` it also required was
+set anywhere in this environment. So `placesConfigured()` was false and
+every Location Platform screen was already (correctly) showing its "not
+configured" state — real code, non-functional for lack of credentials
+and, separately, for a dead transport layer that would have kept failing
+even once a key was added.
+
+**What changed**:
+- `google.server.ts` now calls Places (New) and the Routes API directly
+  with a single `GOOGLE_MAPS_API_KEY` server-side key
+  (`X-Goog-Api-Key` header) — no gateway, no `LOVABLE_API_KEY`. Same
+  function signatures, same call sites in `api.server.ts`; only the
+  transport changed, matching how Airwallex is already called directly
+  elsewhere in this codebase.
+- `travelLeg()`/`TravelLeg` gained an optional `transit` field (line
+  name, vehicle type, departure/arrival stop and time per leg, and a
+  transfer count) via a richer field mask requested only for TRANSIT —
+  additive, not a rebuild. `GettingThere` (`PlaceDetails.tsx`, used
+  wherever the Location Platform shows travel time) now renders it when
+  present, so Maps' own place-detail sheet benefits too.
+- `directionsUrl()` gained an optional origin, and a new
+  `textDirectionsUrl()` builds the same Google Maps deep link from plain
+  text with no place object at all — the same zero-config technique
+  already proven on programme events and What's On listings (see below).
+- New `/explore/transit` screen (still that route/mini-app id, to avoid
+  navigation churn; titled "Getting Around" on-screen and in `mini-apps.ts`,
+  no longer `planned`): `LocationBar` for the origin (current location or
+  a manual city — already shared app-wide, not new), a destination step,
+  a link to the existing Rav-Kav guide. Two tiers on one screen, chosen
+  automatically by `usePlacesReady()`: **configured** — destination
+  search via the existing `usePlacesFeed`, real walk/transit/drive times
+  via `useTravelTo`, "Open in Google Maps"; **not configured** (today's
+  actual state) — a plain-text destination box that still produces a
+  real Google Maps directions link, no Shekk-side API call at all. The
+  same screen upgrades itself the moment credentials exist; nothing
+  else needs to change.
+
+**Verified already working, not rebuilt**: "get directions" from a
+programme event (`Participant.tsx` → `placeDirectionsUrl()`) and from a
+What's On listing (`whats-on.event.$id.tsx`) — both already build real
+Google Maps links from a text address with zero API calls, since
+`programme_events`/`events` only ever store `location_label`/`venue` as
+free text, never coordinates. Nothing to add here.
+
+**Deliberately untouched**: Gett (`gett.server.ts`/`gett.functions.ts` —
+a real, complete booking backend with a graceful local-simulator
+fallback when `GETT_CLIENT_ID`/`GETT_CLIENT_SECRET` are absent, which
+they are) and `/explore/rides`, which already explains that state
+honestly. No partner contact attempted, none of Gett's own code
+changed. `services.ts`'s "Getting around" category (Gett only) and
+`lib/search.ts`'s app-search index were left alone — neither included
+Maps before this pass either, so adding Transit alone would have been
+an inconsistent, out-of-scope change.
+
+**What's needed to actually go live**: a Google Cloud project with
+Places API (New) and the Routes API enabled and billing on (both are
+paid APIs beyond a small monthly credit — a real, ongoing cost, not
+flagged lightly), a server-side key (`GOOGLE_MAPS_API_KEY`, restricted
+to those two APIs, IP-restricted or unrestricted — never
+referrer-restricted, that's for the browser key) and, separately, a
+browser-restricted Maps JavaScript API key
+(`VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY`, misnamed from the old
+Lovable-provisioning flow but already loaded directly from Google, not
+through any gateway) for the visual map in `/explore/maps`. No key was
+invented or set as part of this pass.
+
+**Tests and build**: `places.test.ts` gained coverage for the direct
+Google calls (asserts no third-party host, no `Authorization` header,
+correct `X-Goog-Api-Key`), the TRANSIT-only richer field mask, transit
+step parsing into stops/times/transfer count, and the new
+`directionsUrl`/`textDirectionsUrl` behavior — 277/277 tests passing
+overall, typecheck clean, lint clean on every changed line, production
+build passes. Live-verified in the browser with a disposable account
+against this environment's actual (unconfigured) state: the zero-config
+tier renders its honest copy, a typed destination produces a real,
+correctly-formed Google Maps link, and the Rav-Kav guide link opens the
+real guide. The configured tier could not be exercised live since no
+Google credentials exist in this environment; its query wiring is the
+same `usePlacesFeed`/`useTravelTo` hooks already exercised by
+`/explore/maps` elsewhere in this document.
 
 ## What's On
 
