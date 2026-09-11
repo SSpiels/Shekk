@@ -7,8 +7,14 @@
  * list view, so the mini app still works.
  */
 
-import { useEffect, useRef } from "react";
-import type { PlaceRef } from "@/lib/places/types";
+import { useEffect, useRef, useState } from "react";
+import { decodePolyline } from "@/lib/places/format";
+import type { PlaceRef, RouteBounds } from "@/lib/places/types";
+
+/** Approximations of the Shekk primary/muted tokens as plain hex — Maps'
+ *  canvas-rendered overlays need a literal color, not a CSS custom property. */
+const ROUTE_COLOR = "#3D4FC4";
+const WALK_COLOR = "#94A3B8";
 
 export const BROWSER_KEY = import.meta.env["VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY"] as
   | string
@@ -47,23 +53,40 @@ function loadMaps(): Promise<void> {
   return loader;
 }
 
+export type MapRoute = {
+  /** One line per leg — a whole walk/drive route, or one per raw transit step. */
+  lines: { encodedPolyline: string; mode: "WALK" | "TRANSIT" | "ROUTE" }[];
+  /** Google's own fit-to-route rectangle — never guessed client-side. */
+  bounds: RouteBounds | null;
+};
+
 export function GoogleMapCanvas({
   centre,
   places,
   activeId,
   onSelect,
+  route,
   className = "",
 }: {
   centre: { lat: number; lon: number };
   places: PlaceRef[];
   activeId: string | null;
   onSelect: (id: string) => void;
+  /** Draws real route geometry and fits the map to it instead of the default zoom. */
+  route?: MapRoute | null;
   className?: string;
 }) {
   const host = useRef<HTMLDivElement | null>(null);
   const map = useRef<any>(null);
   const markers = useRef<Map<string, any>>(new Map());
   const me = useRef<any>(null);
+  const lines = useRef<any[]>([]);
+  // Every effect below touches `map.current`, which is set inside an async
+  // `.then()` — a plain ref mutation doesn't cause those effects to re-run,
+  // so without this flag any effect whose OTHER dependencies never change
+  // again after mount (e.g. a fixed centre/places pair) would silently never
+  // draw anything if the map wasn't ready on the very first pass.
+  const [mapReady, setMapReady] = useState(false);
 
   useEffect(() => {
     let dead = false;
@@ -78,6 +101,7 @@ export function GoogleMapCanvas({
           clickableIcons: false,
           gestureHandling: "greedy",
         });
+        setMapReady(true);
       })
       .catch(() => {
         /* no key or blocked referrer — the list view carries the screen */
@@ -111,7 +135,7 @@ export function GoogleMapCanvas({
     } else {
       me.current.setPosition(pos);
     }
-  }, [centre.lat, centre.lon]);
+  }, [centre.lat, centre.lon, mapReady]);
 
   /* one marker per result, reused across searches */
   useEffect(() => {
@@ -139,14 +163,65 @@ export function GoogleMapCanvas({
       marker.addListener("click", () => onSelect(p.id));
       markers.current.set(p.id, marker);
     }
-  }, [places, activeId, onSelect]);
+  }, [places, activeId, onSelect, mapReady]);
 
-  /* centre on the selected place */
+  /* centre on the selected place — skipped once a route takes over framing */
   useEffect(() => {
-    if (!map.current || !activeId) return;
+    if (!map.current || !activeId || route) return;
     const place = places.find((p) => p.id === activeId);
     if (place) map.current.panTo({ lat: place.lat, lng: place.lon });
-  }, [activeId, places]);
+  }, [activeId, places, route, mapReady]);
+
+  /* draw the route's real geometry and fit the map to it */
+  useEffect(() => {
+    if (!map.current) return;
+    for (const l of lines.current) l.setMap(null);
+    lines.current = [];
+    if (!route) return;
+
+    for (const line of route.lines) {
+      const path = decodePolyline(line.encodedPolyline).map(([lat, lon]) => ({ lat, lng: lon }));
+      if (path.length < 2) continue;
+      const walk = line.mode === "WALK";
+      lines.current.push(
+        new window.google!.maps.Polyline({
+          map: map.current,
+          path,
+          strokeColor: walk ? WALK_COLOR : ROUTE_COLOR,
+          strokeOpacity: walk ? 0 : 0.9,
+          strokeWeight: walk ? 0 : 5,
+          zIndex: walk ? 15 : 20,
+          ...(walk
+            ? {
+                icons: [
+                  {
+                    icon: {
+                      path: "M 0,-1 0,1",
+                      strokeOpacity: 1,
+                      strokeColor: WALK_COLOR,
+                      scale: 3,
+                    },
+                    offset: "0",
+                    repeat: "12px",
+                  },
+                ],
+              }
+            : {}),
+        }),
+      );
+    }
+
+    if (route.bounds) {
+      const b = route.bounds;
+      map.current.fitBounds(
+        new window.google!.maps.LatLngBounds(
+          { lat: b.south, lng: b.west },
+          { lat: b.north, lng: b.east },
+        ),
+        56,
+      );
+    }
+  }, [route, mapReady]);
 
   return <div ref={host} className={className} role="application" aria-label="Map" />;
 }

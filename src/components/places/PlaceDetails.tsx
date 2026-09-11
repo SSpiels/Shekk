@@ -12,10 +12,13 @@ import {
   contractLabel,
   directionsUrl,
   hasPrice,
+  journeySegments,
   kmLabel,
   openLabel,
   priceLabel,
   shekels,
+  transferCount,
+  transitTimeLabel,
   verifiedLabel,
   type Place,
   type TravelSet,
@@ -102,8 +105,12 @@ export function PlaceHours({ place }: { place: Place }) {
 
 export function GettingThere({ travel }: { travel: TravelSet | null }) {
   if (!travel || (!travel.walk && !travel.transit && !travel.drive)) return null;
-  const transfers = travel.transit?.transit?.transfers;
-  const steps = travel.transit?.transit?.steps;
+  const segments = travel.transit
+    ? journeySegments(travel.transit.steps).filter((s) => s.mode === "TRANSIT")
+    : [];
+  const transfers = travel.transit
+    ? transferCount(journeySegments(travel.transit.steps))
+    : undefined;
   return (
     <Card className="space-y-2">
       <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Getting there</p>
@@ -125,25 +132,24 @@ export function GettingThere({ travel }: { travel: TravelSet | null }) {
           </span>
         )}
       </div>
-      {steps?.length ? (
+      {segments.length ? (
         <ul className="space-y-1.5 border-t border-border pt-2">
-          {steps.map((s, i) => (
+          {segments.map((s, i) => (
             <li key={i} className="text-xs text-muted-foreground">
-              <span className="font-semibold text-foreground">{s.line ?? "Transit"}</span>
-              {s.departureStop && s.arrivalStop ? ` · ${s.departureStop} → ${s.arrivalStop}` : null}
-              {s.departureTime ? ` · ${transitTimeLabel(s.departureTime)}` : null}
+              <span className="font-semibold text-foreground">
+                {s.transit?.line ? `${s.transit.line} · ` : ""}
+                {s.transit?.headsign ?? "Transit"}
+              </span>
+              {s.transit?.departureStop && s.transit?.arrivalStop
+                ? ` · ${s.transit.departureStop} → ${s.transit.arrivalStop}`
+                : null}
+              {s.transit?.departureTime ? ` · ${transitTimeLabel(s.transit.departureTime)}` : null}
             </li>
           ))}
         </ul>
       ) : null}
     </Card>
   );
-}
-
-function transitTimeLabel(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
 /**

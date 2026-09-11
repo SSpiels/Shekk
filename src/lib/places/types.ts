@@ -103,25 +103,74 @@ export type Place = PlaceRef & {
 
 export type TravelMode = "WALK" | "TRANSIT" | "DRIVE";
 
-/** One bus/train/light-rail leg of a transit journey, when Google provides it. */
-export type TransitStep = {
-  /** Line name, e.g. "Bus 18" or "Red Line" — whatever Google's transit line calls itself. */
+export type TransitVehicle =
+  | "BUS"
+  | "LIGHT_RAIL"
+  | "RAIL"
+  | "SUBWAY"
+  | "FERRY"
+  | "CABLE_CAR"
+  | "OTHER";
+
+/** Real-world bounds for fitting a map to a route — always a plain rectangle. */
+export type RouteBounds = { south: number; west: number; north: number; east: number };
+
+/** Transit detail on a step, present only when that step is a bus/train/etc leg. */
+export type TransitDetail = {
+  /** Google's short line name (e.g. "18") — always prefer this over the long, GTFS-derived `line`. */
   line: string | null;
-  /** "BUS", "RAIL", "LIGHT_RAIL", etc. */
-  vehicle: string | null;
+  vehicle: TransitVehicle | null;
+  /** The line's own long/internal name — often not rider-friendly; kept only as a fallback. */
+  lineLong: string | null;
+  /** Rider-facing direction, e.g. "towards Central Station". */
+  headsign: string | null;
+  agency: string | null;
   departureStop: string | null;
   arrivalStop: string | null;
   /** ISO timestamps, when the operator's schedule data includes them. */
   departureTime: string | null;
   arrivalTime: string | null;
+  /** Stops between boarding and alighting, inclusive of neither — Google's own count. */
+  stopCount: number | null;
+};
+
+/**
+ * One raw leg of a route as Google returns it: a single walk run or a single
+ * transit ride. TRANSIT-mode routes have several; WALK/DRIVE routes have one
+ * (or none, if the mode's response doesn't need step-level detail).
+ */
+export type JourneyStep = {
+  mode: "WALK" | "TRANSIT";
+  distanceMeters: number;
+  minutes: number;
+  /** This step's own geometry, for drawing it distinctly on the map. */
+  polyline: string | null;
+  /** Present only when `mode === "TRANSIT"`. */
+  transit: TransitDetail | null;
+};
+
+/**
+ * A step, or several consecutive same-mode steps merged into one — what a
+ * journey timeline actually shows a rider (nobody wants five separate
+ * "turn left" walk steps as five list rows).
+ */
+export type JourneySegment = {
+  mode: "WALK" | "TRANSIT";
+  distanceMeters: number;
+  minutes: number;
+  transit: TransitDetail | null;
 };
 
 export type TravelLeg = {
   mode: TravelMode;
   minutes: number;
   km: number;
-  /** TRANSIT only, and only when Google's data includes step-level detail. */
-  transit?: { transfers: number; steps: TransitStep[] };
+  /** The whole route's geometry, for a map that isn't just place markers. */
+  polyline: string | null;
+  /** Fit a map to exactly this route — Google computes it, Shekk never guesses. */
+  viewport: RouteBounds | null;
+  /** Raw per-step detail, for TRANSIT only (empty for WALK/DRIVE — one mode throughout). */
+  steps: JourneyStep[];
 };
 
 /** All the ways of getting there we could resolve. Any leg may be missing. */

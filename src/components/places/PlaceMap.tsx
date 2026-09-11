@@ -7,7 +7,7 @@
  */
 
 import { MapPin } from "lucide-react";
-import { BROWSER_KEY, GoogleMapCanvas } from "@/components/GoogleMapCanvas";
+import { BROWSER_KEY, GoogleMapCanvas, type MapRoute } from "@/components/GoogleMapCanvas";
 import type { LatLon, Place } from "@/lib/places";
 
 export function PlaceMap({
@@ -15,12 +15,15 @@ export function PlaceMap({
   places,
   activeId,
   onSelect,
+  route,
   className = "h-56 w-full rounded-2xl",
 }: {
   centre: LatLon | null;
   places: Place[];
   activeId: string | null;
   onSelect: (id: string) => void;
+  /** Draws real route geometry (a journey's polyline) instead of just markers. */
+  route?: MapRoute | null;
   className?: string;
 }) {
   if (!BROWSER_KEY || !centre)
@@ -39,6 +42,7 @@ export function PlaceMap({
       places={places.map((p) => ({ id: p.id, name: p.name, lat: p.lat, lon: p.lon }))}
       activeId={activeId}
       onSelect={onSelect}
+      {...(route !== undefined ? { route } : {})}
       className={className}
     />
   );

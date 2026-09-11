@@ -15,7 +15,7 @@
  * minutes and never written to the database. Only the place id is storable.
  */
 
-import type { PhotoRef, Place, TransitStep, TravelLeg, TravelMode } from "./types";
+import type { JourneyStep, PhotoRef, Place, RouteBounds, TransitVehicle, TravelLeg, TravelMode } from "./types";
 
 const PLACES_HOST = "https://places.googleapis.com";
 const ROUTES_HOST = "https://routes.googleapis.com";
@@ -224,8 +224,11 @@ export async function photoUrl(photoName: string, maxWidthPx: number): Promise<s
   }
 }
 
-type TransitStepRow = {
+type StepRow = {
   travelMode?: string;
+  distanceMeters?: number;
+  staticDuration?: string;
+  polyline?: { encodedPolyline?: string };
   transitDetails?: {
     stopDetails?: {
       departureStop?: { name?: string };
@@ -233,29 +236,106 @@ type TransitStepRow = {
       departureTime?: string;
       arrivalTime?: string;
     };
-    transitLine?: { name?: string; nameShort?: string; vehicle?: { type?: string } };
+    headsign?: string;
+    stopCount?: number;
+    transitLine?: {
+      name?: string;
+      nameShort?: string;
+      vehicle?: { type?: string };
+      agencies?: { name?: string }[];
+    };
   };
 };
 
 const TRANSIT_FIELD_MASK =
-  "routes.duration,routes.distanceMeters,routes.legs.steps.travelMode,routes.legs.steps.transitDetails";
+  "routes.duration,routes.distanceMeters,routes.polyline,routes.viewport," +
+  "routes.legs.steps.travelMode,routes.legs.steps.distanceMeters,routes.legs.steps.staticDuration," +
+  "routes.legs.steps.polyline,routes.legs.steps.transitDetails";
+const SIMPLE_FIELD_MASK = "routes.duration,routes.distanceMeters,routes.polyline,routes.viewport";
 
-/** Bus/train legs only, in order, from a computeRoutes response. */
-function transitStepsFrom(steps: TransitStepRow[] | undefined): TransitStep[] {
-  return (steps ?? [])
-    .filter((s) => s.travelMode === "TRANSIT" && s.transitDetails)
-    .map((s) => {
-      const d = s.transitDetails!;
-      const line = d.transitLine;
+/** Google's many Routes API vehicle types, collapsed to what the UI actually distinguishes. */
+function vehicleFrom(type: string | undefined): TransitVehicle | null {
+  switch (type) {
+    case "BUS":
+    case "INTERCITY_BUS":
+    case "TROLLEYBUS":
+    case "SHARE_TAXI":
+      return "BUS";
+    case "TRAM":
+    case "METRO_RAIL":
+    case "MONORAIL":
+      return "LIGHT_RAIL";
+    case "SUBWAY":
+      return "SUBWAY";
+    case "RAIL":
+    case "HEAVY_RAIL":
+    case "COMMUTER_TRAIN":
+    case "HIGH_SPEED_TRAIN":
+    case "LONG_DISTANCE_TRAIN":
+    case "FUNICULAR":
+    case "GONDOLA_LIFT":
+      return "RAIL";
+    case "FERRY":
+      return "FERRY";
+    case "CABLE_CAR":
+      return "CABLE_CAR";
+    default:
+      return type ? "OTHER" : null;
+  }
+}
+
+function secondsOf(duration: string | undefined): number {
+  return Number(String(duration ?? "0s").replace("s", "")) || 0;
+}
+
+/** Raw steps, in order, as Shekk's own shape — walk runs and transit rides alike. */
+function stepsFrom(rows: StepRow[] | undefined): JourneyStep[] {
+  return (rows ?? [])
+    .filter((r) => r.travelMode === "WALK" || r.travelMode === "TRANSIT")
+    .map((r) => {
+      const d = r.transitDetails;
+      const line = d?.transitLine;
       return {
-        line: line?.name ?? line?.nameShort ?? line?.vehicle?.type ?? null,
-        vehicle: line?.vehicle?.type ?? null,
-        departureStop: d.stopDetails?.departureStop?.name ?? null,
-        arrivalStop: d.stopDetails?.arrivalStop?.name ?? null,
-        departureTime: d.stopDetails?.departureTime ?? null,
-        arrivalTime: d.stopDetails?.arrivalTime ?? null,
+        mode: r.travelMode as "WALK" | "TRANSIT",
+        distanceMeters: r.distanceMeters ?? 0,
+        minutes: Math.max(1, Math.round(secondsOf(r.staticDuration) / 60)),
+        polyline: r.polyline?.encodedPolyline ?? null,
+        transit: d
+          ? {
+              line: line?.nameShort ?? null,
+              lineLong: line?.name ?? null,
+              vehicle: vehicleFrom(line?.vehicle?.type),
+              headsign: d.headsign ?? null,
+              agency: line?.agencies?.[0]?.name ?? null,
+              departureStop: d.stopDetails?.departureStop?.name ?? null,
+              arrivalStop: d.stopDetails?.arrivalStop?.name ?? null,
+              departureTime: d.stopDetails?.departureTime ?? null,
+              arrivalTime: d.stopDetails?.arrivalTime ?? null,
+              stopCount: d.stopCount ?? null,
+            }
+          : null,
       };
     });
+}
+
+function boundsFrom(
+  viewport:
+    | {
+        low?: { latitude?: number; longitude?: number };
+        high?: { latitude?: number; longitude?: number };
+      }
+    | undefined,
+): RouteBounds | null {
+  if (!viewport?.low || !viewport?.high) return null;
+  const { low, high } = viewport;
+  if (
+    low.latitude == null ||
+    low.longitude == null ||
+    high.latitude == null ||
+    high.longitude == null
+  )
+    return null;
+  return { south: low.latitude, west: low.longitude, north: high.latitude, east: high.longitude };
 }
 
 /** One travel leg. Never throws — travel info is a nicety, not the feature. */
@@ -271,31 +351,35 @@ export async function travelLeg(input: {
       routes?: {
         duration?: string;
         distanceMeters?: number;
-        legs?: { steps?: TransitStepRow[] }[];
+        polyline?: { encodedPolyline?: string };
+        viewport?: {
+          low?: { latitude?: number; longitude?: number };
+          high?: { latitude?: number; longitude?: number };
+        };
+        legs?: { steps?: StepRow[] }[];
       }[];
     }>(ROUTES_HOST, "/directions/v2:computeRoutes", {
       method: "POST",
-      // Step-level transit detail is only meaningful — and only requested —
-      // for TRANSIT, so a walk or drive leg stays on the cheaper field mask.
-      fieldMask:
-        input.mode === "TRANSIT" ? TRANSIT_FIELD_MASK : "routes.duration,routes.distanceMeters",
+      // Step-level detail (and its cost) is only meaningful for TRANSIT, where
+      // a route mixes walking with one or more rides — a walk or drive leg is
+      // one mode the whole way, so it stays on the cheaper field mask.
+      fieldMask: input.mode === "TRANSIT" ? TRANSIT_FIELD_MASK : SIMPLE_FIELD_MASK,
       body: JSON.stringify({
         origin: { location: { latLng: { latitude: input.fromLat, longitude: input.fromLon } } },
         destination: { location: { latLng: { latitude: input.toLat, longitude: input.toLon } } },
         travelMode: input.mode,
+        languageCode: "en",
       }),
     });
     const route = json.routes?.[0];
     if (!route?.duration) return null;
-    const seconds = Number(String(route.duration).replace("s", ""));
-    const steps = transitStepsFrom(route.legs?.[0]?.steps);
     return {
       mode: input.mode,
-      minutes: Math.max(1, Math.round(seconds / 60)),
+      minutes: Math.max(1, Math.round(secondsOf(route.duration) / 60)),
       km: Math.round(((route.distanceMeters ?? 0) / 1000) * 10) / 10,
-      ...(input.mode === "TRANSIT" && steps.length
-        ? { transit: { transfers: Math.max(0, steps.length - 1), steps } }
-        : {}),
+      polyline: route.polyline?.encodedPolyline ?? null,
+      viewport: boundsFrom(route.viewport),
+      steps: input.mode === "TRANSIT" ? stepsFrom(route.legs?.[0]?.steps) : [],
     };
   } catch (e) {
     console.error("travel leg failed", e);

@@ -1,7 +1,8 @@
 # Current state
 
-**Last audited:** 2026-09-09
-**Branch audited:** `feature/programme-os-v1`; Getting Around checkpoint,
+**Last audited:** 2026-09-11
+**Branch audited:** `feature/programme-os-v1`; Getting Around redesign
+checkpoint, after the Getting Around (Google credentials) checkpoint,
 after the Pre-demo cleanup & staff-auth checkpoint, after the Pilot
 onboarding & Settings checkpoint, after the Integration & Overview
 checkpoint, after the Team checkpoint, after the Content data-integrity &
@@ -871,6 +872,105 @@ real guide. The configured tier could not be exercised live since no
 Google credentials exist in this environment; its query wiring is the
 same `usePlacesFeed`/`useTravelTo` hooks already exercised by
 `/explore/maps` elsewhere in this document.
+
+**Since superseded**: `GOOGLE_MAPS_API_KEY` and
+`VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY` are now both set with
+billing enabled, so the "configured" tier above is live, not
+theoretical — see the redesign checkpoint immediately below, which
+replaced that tier's UI entirely.
+
+### Getting Around redesign checkpoint
+
+The previous checkpoint made Getting Around technically work; this one
+made it a product worth using. Same architecture, same
+Places/Routes calls, same `src/lib/places/` platform — this was a
+visual/UX pass, not an infrastructure change. Prompted by: the
+Places/Routes integration was live and returning real data, but the
+screen still read as an API demo (no map, destination search reusing
+the ratings/photo-heavy `PlaceCard`, raw GTFS line names like
+`"18_ אגד"` shown verbatim, a cramped mode summary with the Rav-Kav
+link visually competing with the primary action) rather than a journey
+planner a student would trust.
+
+**Data model made richer, still 100% Google-sourced** (`types.ts`,
+`google.server.ts`): `TravelLeg` gained `polyline` (whole-route
+geometry) and `viewport` (Google's own fit-to-route rectangle — never
+guessed client-side); the old flat `transit` field on a leg became
+`steps: JourneyStep[]`, one entry per raw Google step, each with its
+own `polyline`, `mode`, and (for TRANSIT steps) a `TransitDetail` that
+now prefers `transitLine.nameShort` (e.g. `"18"`) over the messy raw
+`name`, keeping the latter only as a `lineLong` fallback that's never
+shown as primary. `journeySegments()` (`format.ts`) collapses
+consecutive walk steps into one timeline row the way a rider actually
+reads a journey, and `decodePolyline()` implements the standard
+Google/OSRM polyline algorithm from scratch (verified against Google's
+own canonical worked example) so no extra dependency was needed.
+
+**The map is now real** (`GoogleMapCanvas.tsx`, `PlaceMap.tsx`): a new
+`route` prop draws the selected journey's actual geometry — solid line
+per transit leg, dashed for walking legs — and fits the map to
+Google's own viewport bounds instead of a fixed zoom. Colors are two
+literal hex values (`#3D4FC4` route, `#94A3B8` walk) rather than CSS
+custom properties, because Maps' canvas rendering needs a literal
+color; mode is otherwise distinguished by icon shape
+(`BusFront`/`TramFront`/`TrainFront`/`Sailboat`/`CableCar`), not a
+color palette, to stay inside Shekk's deliberately near-monochrome
+design tokens rather than inventing a separate visual language. Fixed
+a real race condition along the way: `map.current` was a plain ref set
+inside an async `.then()`, so becoming non-null never re-triggered the
+other effects that read it — routes and marker fitting silently did
+nothing on first load. Promoting readiness to a `mapReady` state
+(included in every dependent effect's dependency array) fixed it;
+confirmed live by screenshot before/after.
+
+**`/explore/transit` rewritten** (`transit.tsx`): a two-row
+origin/destination `JourneyBar` (current location or a manual city;
+swap button that flips origin and destination without touching the
+shared global location store) replaces the old single-field flow; a
+plain icon+name+address `DestinationResults` list replaces reusing the
+ratings/photo-laden `PlaceCard` for a bus stop search; `JourneyResults`
+shows three `ModeCard`s (walk/transit/drive, each with duration and
+distance/transfer count) above a real `JourneyTimeline` — walk legs,
+each transit ride with its line badge, headsign, stop names and
+departure/arrival time, more walk legs — and an "Open in Google Maps"
+button; the Rav-Kav guide is a single link below the results, not a
+competing panel. `defaultMode()` picks which mode is pre-selected
+(walk if ≤20 min, else transit if available, else the fastest) after
+live-testing a 65+ km Tel Aviv → Jerusalem journey surfaced a bug where
+a 900+ minute walk leg was defaulting to "selected" just because it
+was first in the list.
+
+**`GettingThere`** (`PlaceDetails.tsx`, the shared getting-there panel
+used in place-detail sheets elsewhere, e.g. `/explore/maps`) was
+updated to the same data shape and now shows the same clean line/
+headsign text instead of raw transit data.
+
+**Live-verified** in the browser (mobile 375×812 and desktop, both
+against this environment's real, now-billing-enabled Google
+credentials, no mocking): Jerusalem → The Western Wall Plaza returns a
+real map with route polyline, three mode cards (41 min walk / 29 min
+transit, 1 transfer / 17 min drive), and a genuine timeline — walk 3
+min, bus **18** Binyanei HaUma ICC → HaNevi'im/HaRav Kook (11 stops,
+real departure/arrival times), walk 3 min, bus **1** onward to Western
+Wall (6 stops), walk 4 min, with a working "Open in Google Maps"
+button. Swap correctly moved the destination into the origin slot with
+a "Use current location instead" affordance, without mutating the
+shared location store. The Tel Aviv → Jerusalem intercity case (real
+train line **761**) and the previously-buggy default-mode selection
+were also re-verified live after the `defaultMode()` fix.
+
+**Tests and build**: 282/282 tests passing (new coverage for
+`decodePolyline`, `journeySegments`/`transferCount`, and richer transit
+step parsing asserting `nameShort` preference and vehicle-type
+mapping), `tsc --noEmit` clean, lint clean on every changed line,
+production build passes.
+
+**Deliberately untouched, as before**: Gett, native Rav-Kav loading/
+payments, affiliate integrations, `services.ts`'s "Getting around"
+category, `lib/search.ts`'s app-search index. No live arrivals, delays,
+fares, platform numbers, or route geometry are ever fabricated — every
+one of those either comes straight from Google's response or is
+omitted.
 
 ## What's On
 

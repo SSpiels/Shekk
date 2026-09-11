@@ -147,11 +147,15 @@ export function usePlaceDetail(id: string) {
   };
 }
 
-/** Walking, transit and driving time from the member to a place. */
-export function useTravelTo(to: LatLon | null, modes?: ("WALK" | "TRANSIT" | "DRIVE")[]) {
+/**
+ * Walking, transit and driving time from the member to a place. `from`
+ * defaults to the member's shared current location; pass an explicit one
+ * (e.g. a manually-picked journey start) to override it for just this call.
+ */
+export function useTravelTo(to: LatLon | null, modes?: ("WALK" | "TRANSIT" | "DRIVE")[], fromOverride?: LatLon | null) {
   const { place } = useLocation();
   const travel = useServerFn(placesTravel);
-  const from = place ? { lat: place.lat, lon: place.lon } : null;
+  const from = fromOverride !== undefined ? fromOverride : place ? { lat: place.lat, lon: place.lon } : null;
 
   const query = useQuery<TravelSet>({
     queryKey: [

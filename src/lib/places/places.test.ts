@@ -8,7 +8,16 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { categoryFor, categorySet, placeTypesFor, PLACE_CATEGORIES } from "./taxonomy";
-import { coordKey, directionsUrl, nearbyKey, roundCoord, textDirectionsUrl } from "./format";
+import {
+  coordKey,
+  decodePolyline,
+  directionsUrl,
+  journeySegments,
+  nearbyKey,
+  roundCoord,
+  textDirectionsUrl,
+  transferCount,
+} from "./format";
 import { dedupe, placesCacheSize, placesInflightSize, resetPlacesCache } from "./cache.server";
 import { mergeMeta, toMeta } from "./meta.server";
 import type { Place } from "./types";
@@ -30,6 +39,78 @@ describe("taxonomy", () => {
 
   it("respects the requested type limit", () => {
     expect(placeTypesFor(PLACE_CATEGORIES, 5)).toHaveLength(5);
+  });
+});
+
+describe("decodePolyline", () => {
+  it("decodes Google's own canonical encoded-polyline example", () => {
+    expect(decodePolyline("_p~iF~ps|U_ulLnnqC_mqNvxq`@")).toEqual([
+      [38.5, -120.2],
+      [40.7, -120.95],
+      [43.252, -126.453],
+    ]);
+  });
+
+  it("returns nothing for an empty string", () => {
+    expect(decodePolyline("")).toEqual([]);
+  });
+});
+
+describe("journeySegments / transferCount", () => {
+  it("merges consecutive walk steps but keeps each transit ride distinct", () => {
+    const steps = [
+      { mode: "WALK" as const, distanceMeters: 50, minutes: 1, polyline: null, transit: null },
+      { mode: "WALK" as const, distanceMeters: 80, minutes: 1, polyline: null, transit: null },
+      {
+        mode: "TRANSIT" as const,
+        distanceMeters: 3000,
+        minutes: 10,
+        polyline: null,
+        transit: {
+          line: "18",
+          vehicle: "BUS" as const,
+          lineLong: null,
+          headsign: null,
+          agency: null,
+          departureStop: null,
+          arrivalStop: null,
+          departureTime: null,
+          arrivalTime: null,
+          stopCount: null,
+        },
+      },
+      { mode: "WALK" as const, distanceMeters: 40, minutes: 1, polyline: null, transit: null },
+    ];
+    const segments = journeySegments(steps);
+    expect(segments).toHaveLength(3);
+    expect(segments[0]).toMatchObject({ mode: "WALK", distanceMeters: 130, minutes: 2 });
+    expect(segments[1]).toMatchObject({ mode: "TRANSIT" });
+    expect(segments[2]).toMatchObject({ mode: "WALK", distanceMeters: 40, minutes: 1 });
+    expect(transferCount(segments)).toBe(0);
+  });
+
+  it("counts transfers as one fewer than the number of rides", () => {
+    const ride = {
+      mode: "TRANSIT" as const,
+      distanceMeters: 1000,
+      minutes: 5,
+      polyline: null,
+      transit: {
+        line: "1",
+        vehicle: "BUS" as const,
+        lineLong: null,
+        headsign: null,
+        agency: null,
+        departureStop: null,
+        arrivalStop: null,
+        departureTime: null,
+        arrivalTime: null,
+        stopCount: null,
+      },
+    };
+    expect(transferCount(journeySegments([ride]))).toBe(0);
+    expect(transferCount(journeySegments([ride, ride]))).toBe(1);
+    expect(transferCount(journeySegments([ride, ride, ride]))).toBe(2);
   });
 });
 
@@ -282,7 +363,7 @@ describe("Google row mapping", () => {
     );
   });
 
-  it("turns a transit route's steps into departure/arrival stops and a transfer count", async () => {
+  it("turns a transit route's steps into clean line names, stops and geometry", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -293,12 +374,19 @@ describe("Google row mapping", () => {
             {
               duration: "1800s",
               distanceMeters: 8000,
+              polyline: { encodedPolyline: "_p~iF~ps|U_ulLnnqC_mqNvxq`@" },
+              viewport: {
+                low: { latitude: 31.7, longitude: 35.2 },
+                high: { latitude: 31.8, longitude: 35.3 },
+              },
               legs: [
                 {
                   steps: [
-                    { travelMode: "WALK" },
+                    { travelMode: "WALK", distanceMeters: 200, staticDuration: "180s" },
                     {
                       travelMode: "TRANSIT",
+                      distanceMeters: 3000,
+                      staticDuration: "600s",
                       transitDetails: {
                         stopDetails: {
                           departureStop: { name: "King George St" },
@@ -306,11 +394,20 @@ describe("Google row mapping", () => {
                           departureTime: "2026-09-09T09:55:00Z",
                           arrivalTime: "2026-09-09T10:10:00Z",
                         },
-                        transitLine: { name: "Bus 18", vehicle: { type: "BUS" } },
+                        headsign: "Central Station",
+                        stopCount: 4,
+                        transitLine: {
+                          name: "תחנה תפעולית/ביטוח לאומי-ירושלים<->חניון רכבת מלחה-1#",
+                          nameShort: "18",
+                          vehicle: { type: "BUS" },
+                          agencies: [{ name: "Egged" }],
+                        },
                       },
                     },
                     {
                       travelMode: "TRANSIT",
+                      distanceMeters: 2000,
+                      staticDuration: "500s",
                       transitDetails: {
                         stopDetails: {
                           departureStop: { name: "Central Station" },
@@ -318,7 +415,8 @@ describe("Google row mapping", () => {
                           departureTime: "2026-09-09T10:15:00Z",
                           arrivalTime: "2026-09-09T10:25:00Z",
                         },
-                        transitLine: { name: "Light Rail Red", vehicle: { type: "LIGHT_RAIL" } },
+                        headsign: "Old City",
+                        transitLine: { nameShort: "R", vehicle: { type: "TRAM" } },
                       },
                     },
                   ],
@@ -339,14 +437,24 @@ describe("Google row mapping", () => {
     });
 
     expect(leg?.minutes).toBe(30);
-    expect(leg?.transit?.transfers).toBe(1);
-    expect(leg?.transit?.steps).toHaveLength(2);
-    expect(leg?.transit?.steps[0]).toMatchObject({
-      line: "Bus 18",
+    expect(leg?.polyline).toBe("_p~iF~ps|U_ulLnnqC_mqNvxq`@");
+    expect(leg?.viewport).toEqual({ south: 31.7, west: 35.2, north: 31.8, east: 35.3 });
+    expect(leg?.steps).toHaveLength(3);
+    // The messy GTFS `name` never becomes the displayed line — nameShort only.
+    expect(leg?.steps[1]?.transit).toMatchObject({
+      line: "18",
+      vehicle: "BUS",
+      agency: "Egged",
       departureStop: "King George St",
       arrivalStop: "Central Station",
+      stopCount: 4,
     });
-    expect(leg?.transit?.steps[1]).toMatchObject({ line: "Light Rail Red", vehicle: "LIGHT_RAIL" });
+    // TRAM collapses to the UI's simplified "LIGHT_RAIL" vehicle category.
+    expect(leg?.steps[2]?.transit).toMatchObject({ line: "R", vehicle: "LIGHT_RAIL" });
+
+    const segments = journeySegments(leg!.steps);
+    expect(segments).toHaveLength(3);
+    expect(transferCount(segments)).toBe(1);
   });
 
   it("gives an actionable message for a key whose API restrictions are missing Places/Routes", async () => {

@@ -5,7 +5,7 @@
  * in tests and in every mini app.
  */
 
-import type { LatLon, Place, PlaceMeta, TravelLeg } from "./types";
+import type { JourneySegment, JourneyStep, LatLon, Place, PlaceMeta, TransitVehicle, TravelLeg } from "./types";
 
 export const shekels = (n: number) => `₪${Math.round(n).toLocaleString("en-IL")}`;
 
@@ -105,6 +105,87 @@ export function verifiedLabel(meta: PlaceMeta): string {
   if (days < 30) return `Checked by Shekk ${days} days ago`;
   if (days < 365) return `Checked by Shekk ${Math.round(days / 30)} months ago — confirm at the desk`;
   return "Last checked over a year ago — confirm at the desk";
+}
+
+/**
+ * Decode a Google encoded polyline into [lat, lon] points. The standard
+ * Google/OSRM polyline algorithm — no library needed for something this
+ * small, and it keeps the map free of an extra dependency.
+ */
+export function decodePolyline(encoded: string): [number, number][] {
+  const points: [number, number][] = [];
+  let index = 0;
+  let lat = 0;
+  let lon = 0;
+  while (index < encoded.length) {
+    let shift = 0;
+    let result = 0;
+    let byte: number;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+
+    shift = 0;
+    result = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    lon += result & 1 ? ~(result >> 1) : result >> 1;
+
+    points.push([lat / 1e5, lon / 1e5]);
+  }
+  return points;
+}
+
+/**
+ * A journey timeline the way a rider reads it: consecutive walk steps
+ * collapsed into one "walk to the stop" row, each transit ride its own row.
+ * Nobody wants five separate "turn left" instructions in a results list.
+ */
+export function journeySegments(steps: JourneyStep[]): JourneySegment[] {
+  const out: JourneySegment[] = [];
+  for (const step of steps) {
+    const last = out[out.length - 1];
+    if (step.mode === "WALK" && last?.mode === "WALK") {
+      last.distanceMeters += step.distanceMeters;
+      last.minutes += step.minutes;
+      continue;
+    }
+    out.push({
+      mode: step.mode,
+      distanceMeters: step.distanceMeters,
+      minutes: step.minutes,
+      transit: step.transit,
+    });
+  }
+  return out;
+}
+
+/** How many times a transit journey changes vehicle — 0 means direct. */
+export const transferCount = (segments: JourneySegment[]) =>
+  Math.max(0, segments.filter((s) => s.mode === "TRANSIT").length - 1);
+
+export const VEHICLE_LABEL: Record<TransitVehicle, string> = {
+  BUS: "Bus",
+  LIGHT_RAIL: "Light rail",
+  RAIL: "Train",
+  SUBWAY: "Subway",
+  FERRY: "Ferry",
+  CABLE_CAR: "Cable car",
+  OTHER: "Transit",
+};
+
+/** A local HH:MM for a transit stop time — the operator's own schedule, never invented. */
+export function transitTimeLabel(iso: string | null): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 }
 
 /** True when Shekk has any price to show at all. Never invent one. */
