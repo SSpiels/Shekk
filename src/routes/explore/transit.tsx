@@ -12,21 +12,26 @@
  *    step-by-step timeline built from Google's own data. Nothing here is
  *    invented: no fare, no live arrival, no route Google didn't return.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import {
-  ArrowRight,
   ArrowUpDown,
-  BookOpenText,
   Bus,
   BusFront,
   CableCar,
   Car,
+  ChevronRight,
   Footprints,
+  History,
+  Landmark,
+  LoaderCircle,
+  LocateFixed,
   MapPin,
   Navigation,
   Sailboat,
   Search,
+  ShoppingBasket,
+  Store,
   TrainFront,
   TramFront,
   X,
@@ -35,12 +40,15 @@ import { AppShell, Card, ScreenHeader } from "@/components/AppShell";
 import { PlaceMap, PlacesEmpty, PlacesError, PlacesLoading } from "@/components/places";
 import type { MapRoute } from "@/components/GoogleMapCanvas";
 import { LOCATION_CITIES, useLocation, type Place as LocationPlace } from "@/lib/location";
+import { getGuide } from "@/lib/guides";
 import {
   directionsUrl,
   journeySegments,
+  kmLabel,
   textDirectionsUrl,
   transferCount,
   transitTimeLabel,
+  usePlaceDetail,
   usePlacesFeed,
   usePlacesReady,
   useTravelTo,
@@ -122,19 +130,96 @@ const VEHICLE_ICON: Record<TransitVehicle, typeof BusFront> = {
   OTHER: Bus,
 };
 
+/** A handful of real, useful destinations a gap-year student actually asks for. */
+const QUICK_PLACES: { label: string; query: string; icon: typeof Landmark }[] = [
+  { label: "Western Wall", query: "Western Wall, Jerusalem", icon: Landmark },
+  { label: "Machane Yehuda", query: "Machane Yehuda Market, Jerusalem", icon: ShoppingBasket },
+  { label: "Central Bus Station", query: "Jerusalem Central Bus Station", icon: Bus },
+  { label: "Ben Yehuda St", query: "Ben Yehuda Street, Jerusalem", icon: Store },
+];
+
+/* ─────────────────────────── Recent destinations ────────────────────────────
+ * Google's Places terms forbid caching/storing Places content, so only the
+ * place id (Shekk's own storable join key, same as saved places elsewhere)
+ * and its display name are kept client-side — never coordinates, rating,
+ * photos or hours. Picking a recent re-resolves the full place live through
+ * the existing usePlaceDetail hook, the same as any other selection. */
+type RecentDestination = { id: string; name: string };
+const RECENTS_KEY = "shekk.transit.recent.v1";
+const MAX_RECENTS = 5;
+
+function readRecents(): RecentDestination[] {
+  try {
+    const raw = localStorage.getItem(RECENTS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (r): r is RecentDestination =>
+        Boolean(r) && typeof r.id === "string" && typeof r.name === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function writeRecents(list: RecentDestination[]) {
+  try {
+    localStorage.setItem(RECENTS_KEY, JSON.stringify(list));
+  } catch {
+    /* storage unavailable — recents just won't persist across visits */
+  }
+}
+
+function useRecentDestinations() {
+  const [recents, setRecents] = useState<RecentDestination[]>([]);
+  useEffect(() => {
+    setRecents(readRecents());
+  }, []);
+  const add = useCallback((r: RecentDestination) => {
+    setRecents((prev) => {
+      const next = [r, ...prev.filter((p) => p.id !== r.id)].slice(0, MAX_RECENTS);
+      writeRecents(next);
+      return next;
+    });
+  }, []);
+  return { recents, add };
+}
+
 function GettingAround() {
   const globalLocation = useLocation();
   const { ready, loading: readyLoading } = usePlacesReady();
   const [originOverride, setOriginOverride] = useState<Origin | null>(null);
   const [destination, setDestination] = useState<Place | null>(null);
   const [term, setTerm] = useState("");
+  const { recents, add: addRecent } = useRecentDestinations();
+  const [resolvingRecentId, setResolvingRecentId] = useState<string | null>(null);
+  const resolvingRecent = usePlaceDetail(resolvingRecentId ?? "");
 
   useEffect(() => {
     if (globalLocation.status === "idle" && !globalLocation.loading) globalLocation.detect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [globalLocation.status, globalLocation.loading]);
 
+  useEffect(() => {
+    if (!resolvingRecentId) return;
+    if (resolvingRecent.place) {
+      setDestination(resolvingRecent.place);
+      setResolvingRecentId(null);
+    } else if (resolvingRecent.error) {
+      // The place is gone or unreachable — quietly give up rather than
+      // leaving that chip stuck in a spinner forever.
+      setResolvingRecentId(null);
+    }
+  }, [resolvingRecentId, resolvingRecent.place, resolvingRecent.error]);
+
   const origin = originOverride ?? toOrigin(globalLocation.place);
+  const manualOrigin = Boolean(originOverride) || globalLocation.place?.source === "manual";
+
+  function chooseDestination(p: Place) {
+    setDestination(p);
+    addRecent({ id: p.id, name: p.name });
+  }
 
   function swap() {
     if (!destination) return;
@@ -152,6 +237,7 @@ function GettingAround() {
         <JourneyBar
           origin={origin}
           overridden={Boolean(originOverride)}
+          manual={manualOrigin}
           onResetOrigin={() => setOriginOverride(null)}
           cities={LOCATION_CITIES}
           onPickCity={(c) => {
@@ -160,6 +246,8 @@ function GettingAround() {
           }}
           onUseLocation={globalLocation.detect}
           locating={globalLocation.loading}
+          locationStatus={globalLocation.status}
+          locationError={globalLocation.error}
           destinationLabel={destination?.name ?? null}
           onClearDestination={() => {
             setDestination(null);
@@ -177,22 +265,26 @@ function GettingAround() {
           destination ? (
             <JourneyResults origin={origin} destination={destination} />
           ) : term.trim().length >= 2 ? (
-            <DestinationResults query={term} origin={origin} onSelect={setDestination} />
-          ) : null
+            <DestinationResults query={term} origin={origin} onSelect={chooseDestination} />
+          ) : (
+            <EmptyState
+              onQuickPick={(q) => {
+                haptic();
+                setTerm(q);
+              }}
+              recents={recents}
+              resolvingId={resolvingRecentId}
+              onPickRecent={(id) => {
+                haptic();
+                setResolvingRecentId(id);
+              }}
+            />
+          )
         ) : (
           !destination && <BasicPlanner origin={origin} term={term} />
         )}
 
-        <Link
-          to="/guides/$id"
-          params={{ id: "rav-kav" }}
-          className="tap flex items-center gap-2 px-1 py-1"
-        >
-          <BookOpenText className="size-3.5 text-muted-foreground" />
-          <span className="text-xs font-semibold text-muted-foreground underline underline-offset-2">
-            Rav-Kav guide — the personal card, the student discount, and what a red beep means
-          </span>
-        </Link>
+        <RavKavCard />
       </div>
     </AppShell>
   );
@@ -203,11 +295,14 @@ function GettingAround() {
 function JourneyBar({
   origin,
   overridden,
+  manual,
   onResetOrigin,
   cities,
   onPickCity,
   onUseLocation,
   locating,
+  locationStatus,
+  locationError,
   destinationLabel,
   onClearDestination,
   onSwap,
@@ -217,11 +312,14 @@ function JourneyBar({
 }: {
   origin: Origin | null;
   overridden: boolean;
+  manual: boolean;
   onResetOrigin: () => void;
   cities: string[];
   onPickCity: (city: string) => void;
   onUseLocation: () => void;
   locating: boolean;
+  locationStatus: string;
+  locationError: string | null;
   destinationLabel: string | null;
   onClearDestination: () => void;
   onSwap: () => void;
@@ -229,99 +327,200 @@ function JourneyBar({
   setTerm: (v: string) => void;
   searchDisabled: boolean;
 }) {
-  return (
-    <Card className="relative space-y-0 p-3">
-      <div className="flex gap-3">
-        {/* origin/destination rail */}
-        <div className="flex w-4 shrink-0 flex-col items-center pt-4">
-          <span className="size-2.5 shrink-0 rounded-full border-2 border-primary bg-card" />
-          <span className="w-px flex-1 bg-border" aria-hidden />
-          <MapPin className="size-4 shrink-0 -translate-x-[3px] text-primary" />
-        </div>
+  const [changingOrigin, setChangingOrigin] = useState(false);
 
-        <div className="min-w-0 flex-1 divide-y divide-border">
-          {/* origin row */}
-          <div className="flex items-center gap-2 py-3">
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-semibold">
-                {origin ? origin.label : "Set your location"}
-              </p>
-              {overridden ? (
-                <button
-                  type="button"
-                  onClick={onResetOrigin}
-                  className="text-[11px] font-semibold text-primary"
-                >
-                  Use current location instead
-                </button>
+  return (
+    <div className="space-y-1.5">
+      <div className="relative rounded-3xl bg-card px-3 shadow-card">
+        <div className="flex gap-3">
+          {/* origin/destination rail */}
+          <div className="flex w-4 shrink-0 flex-col items-center pt-[22px]">
+            <span className="size-2.5 shrink-0 rounded-full border-2 border-primary bg-card" />
+            <span className="w-px flex-1 bg-border/70" aria-hidden />
+            <MapPin className="size-4 shrink-0 -translate-x-[3px] text-primary" />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            {/* origin row */}
+            <div className="flex items-center gap-2 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground/80">
+                  From
+                </p>
+                <p className="truncate text-sm font-semibold">
+                  {origin ? origin.label : "Set your location"}
+                </p>
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {manual ? "Manually set" : "Current location"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setChangingOrigin((v) => !v)}
+                className="tap-flat shrink-0 rounded-full bg-muted px-3 py-2 text-[11px] font-semibold text-foreground"
+              >
+                Change
+              </button>
+            </div>
+
+            <div className="h-px bg-border/50" />
+
+            {/* destination row */}
+            <div className="flex items-center gap-2 py-3">
+              {destinationLabel ? (
+                <>
+                  <p className="min-w-0 flex-1 truncate text-sm font-semibold">
+                    {destinationLabel}
+                  </p>
+                  <button
+                    type="button"
+                    aria-label="Clear destination"
+                    onClick={onClearDestination}
+                    className="tap-flat shrink-0 rounded-full bg-muted p-2 text-muted-foreground"
+                  >
+                    <X className="size-3.5" />
+                  </button>
+                </>
               ) : (
-                <p className="text-[11px] text-muted-foreground">Current location</p>
+                <>
+                  <Search className="size-4 shrink-0 text-muted-foreground" />
+                  <input
+                    value={term}
+                    onChange={(e) => setTerm(e.target.value)}
+                    disabled={searchDisabled}
+                    placeholder="Search destination…"
+                    className="min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none placeholder:font-normal placeholder:text-muted-foreground"
+                  />
+                </>
               )}
             </div>
-            {!overridden && (
-              <>
-                <button
-                  type="button"
-                  onClick={onUseLocation}
-                  disabled={locating}
-                  className="tap-flat shrink-0 rounded-lg px-2 py-1 text-[11px] font-semibold text-primary disabled:opacity-50"
-                >
-                  {locating ? "Locating…" : "Update"}
-                </button>
-                <select
-                  aria-label="Pick a city instead"
-                  value=""
-                  onChange={(e) => e.target.value && onPickCity(e.target.value)}
-                  className="tap-flat shrink-0 rounded-lg border border-border bg-background px-1.5 py-1 text-[11px]"
-                >
-                  <option value="">City…</option>
-                  {cities.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-              </>
-            )}
           </div>
+        </div>
 
-          {/* destination row */}
-          <div className="flex items-center gap-2 py-3">
-            {destinationLabel ? (
-              <>
-                <p className="min-w-0 flex-1 truncate text-sm font-semibold">{destinationLabel}</p>
-                <button
-                  type="button"
-                  aria-label="Clear destination"
-                  onClick={onClearDestination}
-                  className="tap-flat shrink-0 rounded-full bg-muted p-1 text-muted-foreground"
-                >
-                  <X className="size-3.5" />
-                </button>
-              </>
-            ) : (
-              <input
-                value={term}
-                onChange={(e) => setTerm(e.target.value)}
-                disabled={searchDisabled}
-                placeholder="Where are you headed?"
-                className="min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none placeholder:font-normal placeholder:text-muted-foreground"
-              />
-            )}
-          </div>
+        <button
+          type="button"
+          aria-label="Swap origin and destination"
+          onClick={onSwap}
+          disabled={!destinationLabel}
+          className="tap absolute right-3 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-card disabled:pointer-events-none disabled:opacity-0"
+        >
+          <ArrowUpDown className="size-3.5" />
+        </button>
+      </div>
+
+      {changingOrigin && (
+        <div className="flex flex-wrap items-center gap-2 rounded-2xl bg-muted/60 px-3 py-2.5">
+          <button
+            type="button"
+            onClick={() => {
+              haptic();
+              if (overridden) onResetOrigin();
+              else onUseLocation();
+              setChangingOrigin(false);
+            }}
+            disabled={locating}
+            className="tap-flat inline-flex min-h-9 items-center gap-1.5 rounded-full bg-card px-3 py-1.5 text-xs font-semibold text-primary shadow-card disabled:opacity-50"
+          >
+            <LocateFixed className="size-3.5" />
+            {locating ? "Locating…" : "Use current location"}
+          </button>
+          <select
+            aria-label="Pick a city instead"
+            value=""
+            onChange={(e) => {
+              if (!e.target.value) return;
+              haptic();
+              onPickCity(e.target.value);
+              setChangingOrigin(false);
+            }}
+            className="tap-flat min-h-9 shrink-0 rounded-full border border-border bg-card px-3 py-1.5 text-xs font-semibold"
+          >
+            <option value="">Pick a city…</option>
+            {cities.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {locationStatus === "denied" && (
+        <p className="px-1 text-[11px] text-muted-foreground">
+          Location is blocked for Shekk in your browser settings — pick a city above instead.
+        </p>
+      )}
+      {locationStatus === "unavailable" && locationError && (
+        <p className="px-1 text-[11px] text-muted-foreground">
+          {locationError} Pick a city above instead.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/* ────────────────────────────────── Empty state ──────────────────────────── */
+
+function EmptyState({
+  onQuickPick,
+  recents,
+  resolvingId,
+  onPickRecent,
+}: {
+  onQuickPick: (query: string) => void;
+  recents: RecentDestination[];
+  resolvingId: string | null;
+  onPickRecent: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-5 pt-1">
+      <div>
+        <p className="mb-2 px-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+          Popular places
+        </p>
+        <div className="grid grid-cols-2 gap-2">
+          {QUICK_PLACES.map((q) => (
+            <button
+              key={q.label}
+              type="button"
+              onClick={() => onQuickPick(q.query)}
+              className="tap-flat flex min-h-[52px] items-center gap-2.5 rounded-2xl bg-card px-3.5 py-3 text-left shadow-card"
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
+                <q.icon className="size-4" />
+              </span>
+              <span className="min-w-0 text-sm font-semibold leading-tight">{q.label}</span>
+            </button>
+          ))}
         </div>
       </div>
 
-      <button
-        type="button"
-        aria-label="Swap origin and destination"
-        onClick={onSwap}
-        disabled={!destinationLabel}
-        className="tap absolute right-3 top-1/2 flex size-8 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card shadow-card disabled:pointer-events-none disabled:opacity-0"
-      >
-        <ArrowUpDown className="size-3.5 text-muted-foreground" />
-      </button>
-    </Card>
+      {recents.length > 0 && (
+        <div>
+          <p className="mb-2 px-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            Recent
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {recents.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => onPickRecent(r.id)}
+                disabled={resolvingId === r.id}
+                className="tap-flat inline-flex min-h-9 items-center gap-1.5 rounded-full bg-muted px-3 py-2 text-xs font-semibold text-foreground disabled:opacity-60"
+              >
+                {resolvingId === r.id ? (
+                  <LoaderCircle className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
+                ) : (
+                  <History className="size-3.5 shrink-0 text-muted-foreground" />
+                )}
+                <span className="max-w-[13rem] truncate">{r.name}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -350,7 +549,7 @@ function DestinationResults({
   }
 
   return (
-    <div className="-mx-1 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card">
+    <div className="-mx-1 divide-y divide-border/60 overflow-hidden rounded-2xl bg-card shadow-card">
       {feed.places.slice(0, 8).map((p) => (
         <button
           key={p.id}
@@ -387,7 +586,7 @@ function kmAway(km: number) {
 /* ────────────────────────────────── Results ─────────────────────────────────── */
 
 function JourneyResults({ origin, destination }: { origin: Origin | null; destination: Place }) {
-  const { travel, loading } = useTravelTo(
+  const { travel, loading, error } = useTravelTo(
     { lat: destination.lat, lon: destination.lon },
     MODE_ORDER,
     origin ? { lat: origin.lat, lon: origin.lon } : null,
@@ -410,6 +609,7 @@ function JourneyResults({ origin, destination }: { origin: Origin | null; destin
   }, [travel]);
 
   if (!origin) return <PlacesEmpty hint="Set your location above to plan this journey." />;
+  if (error && !travel) return <PlacesError message={error} />;
   if (loading && !travel) return <PlacesLoading label="Working out the ways there…" />;
 
   const activeLeg = active ? legsByMode[active] : null;
@@ -428,14 +628,16 @@ function JourneyResults({ origin, destination }: { origin: Origin | null; destin
 
   return (
     <div className="space-y-3">
-      <PlaceMap
-        centre={{ lat: origin.lat, lon: origin.lon }}
-        places={[{ ...destination }]}
-        activeId={null}
-        onSelect={() => {}}
-        route={mapRoute}
-        className="h-48 w-full rounded-2xl"
-      />
+      <div className="overflow-hidden rounded-3xl shadow-card">
+        <PlaceMap
+          centre={{ lat: origin.lat, lon: origin.lon }}
+          places={[{ ...destination }]}
+          activeId={null}
+          onSelect={() => {}}
+          route={mapRoute}
+          className="h-44 w-full sm:h-56"
+        />
+      </div>
 
       {available.length === 0 ? (
         <PlacesEmpty hint="Google didn't return a route for this journey. Try a different destination, or open it in Maps below." />
@@ -453,7 +655,12 @@ function JourneyResults({ origin, destination }: { origin: Origin | null; destin
             ))}
           </div>
 
-          {activeLeg && <JourneyTimeline leg={activeLeg} />}
+          {activeLeg && active && (
+            <>
+              <RouteSummary mode={active} leg={activeLeg} />
+              <JourneyTimeline leg={activeLeg} />
+            </>
+          )}
         </>
       )}
 
@@ -487,22 +694,81 @@ function ModeCard({
   return (
     <button
       type="button"
-      onClick={onSelect}
+      onClick={() => {
+        haptic();
+        onSelect();
+      }}
       aria-pressed={active}
-      className={`tap flex flex-col items-center gap-1 rounded-2xl border px-2 py-3 text-center transition-colors ${
-        active ? "border-primary bg-primary-soft" : "border-border bg-card"
+      className={`tap flex min-h-[76px] flex-col items-center gap-0.5 rounded-2xl px-2 py-3 text-center transition-all ${
+        active
+          ? "bg-primary-soft shadow-card ring-2 ring-primary"
+          : "bg-muted/60 ring-1 ring-transparent"
       }`}
     >
       <Icon className={`size-5 ${active ? "text-primary" : "text-muted-foreground"}`} />
-      <span className="text-sm font-bold leading-tight">{leg.minutes} min</span>
+      <span
+        className={`mt-0.5 text-[10.5px] font-bold uppercase tracking-wide ${
+          active ? "text-primary" : "text-muted-foreground"
+        }`}
+      >
+        {MODE_LABEL[mode]}
+      </span>
+      <span className="text-sm font-extrabold leading-tight">{leg.minutes} min</span>
       <span className="text-[10.5px] leading-tight text-muted-foreground">
         {mode === "TRANSIT"
           ? transfers === 0
             ? "direct"
             : `${transfers} transfer${transfers > 1 ? "s" : ""}`
-          : `${leg.km < 1 ? `${Math.round(leg.km * 1000)} m` : `${leg.km.toFixed(1)} km`}`}
+          : kmLabel(leg.km)}
       </span>
     </button>
+  );
+}
+
+/* ─────────────────────────────── Route summary ───────────────────────────── */
+
+function arriveTimeLabel(minutesFromNow: number): string {
+  return new Date(Date.now() + minutesFromNow * 60_000).toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+/** The real operator arrival time for the last transit ride, when Google gives one. */
+function realTransitArrival(leg: TravelLeg): string | null {
+  const segments = journeySegments(leg.steps);
+  for (let i = segments.length - 1; i >= 0; i--) {
+    const s = segments[i];
+    if (s.mode === "TRANSIT" && s.transit?.arrivalTime)
+      return transitTimeLabel(s.transit.arrivalTime);
+  }
+  return null;
+}
+
+function RouteSummary({ mode, leg }: { mode: TravelMode; leg: TravelLeg }) {
+  if (mode === "TRANSIT") {
+    const segments = journeySegments(leg.steps);
+    const buses = segments.filter((s) => s.mode === "TRANSIT").length;
+    const transfers = transferCount(segments);
+    const arrive = realTransitArrival(leg) ?? arriveTimeLabel(leg.minutes);
+    return (
+      <div className="px-1">
+        <p className="font-display text-2xl font-bold leading-tight">{leg.minutes} min</p>
+        <p className="text-sm text-muted-foreground">
+          Arrive {arrive} · {buses} bus{buses === 1 ? "" : "es"} ·{" "}
+          {transfers === 0 ? "direct" : `${transfers} transfer${transfers > 1 ? "s" : ""}`}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-1">
+      <p className="font-display text-2xl font-bold leading-tight">{leg.minutes} min</p>
+      <p className="text-sm text-muted-foreground">
+        Arrive {arriveTimeLabel(leg.minutes)} · {kmLabel(leg.km)}
+      </p>
+    </div>
   );
 }
 
@@ -522,82 +788,99 @@ function JourneyTimeline({ leg }: { leg: TravelLeg }) {
         ];
 
   return (
-    <Card className="space-y-0 divide-y divide-border p-0">
+    <div className="space-y-0 rounded-3xl bg-card px-1 py-1 shadow-card">
       {segments.map((s, i) => (
-        <TimelineRow key={i} segment={s} first={i === 0} last={i === segments.length - 1} />
+        <TimelineRow key={i} segment={s} last={i === segments.length - 1} />
       ))}
-    </Card>
+    </div>
   );
 }
 
-function TimelineRow({
-  segment,
-  first,
-  last,
-}: {
-  segment: JourneySegment;
-  first: boolean;
-  last: boolean;
-}) {
+function TimelineRow({ segment, last }: { segment: JourneySegment; last: boolean }) {
   const isWalk = segment.mode === "WALK";
   const vehicle = segment.transit?.vehicle ?? null;
   const Icon = isWalk ? Footprints : vehicle ? VEHICLE_ICON[vehicle] : Bus;
   const dep = transitTimeLabel(segment.transit?.departureTime ?? null);
   const arr = transitTimeLabel(segment.transit?.arrivalTime ?? null);
+  const distance =
+    segment.distanceMeters < 1000
+      ? `${Math.round(segment.distanceMeters)} m`
+      : `${(segment.distanceMeters / 1000).toFixed(1)} km`;
 
   return (
-    <div className="flex gap-3 px-4 py-3">
+    <div className={`flex gap-3 px-3 ${isWalk ? "py-1.5" : "py-3"}`}>
       <div className="flex w-6 shrink-0 flex-col items-center">
-        <span
-          className={`flex size-6 shrink-0 items-center justify-center rounded-full ${
-            isWalk ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground"
-          }`}
-        >
-          <Icon className="size-3.5" />
-        </span>
-        {!last && <span className="mt-1 w-px flex-1 bg-border" aria-hidden />}
+        {isWalk ? (
+          <Footprints className="size-4 text-muted-foreground" />
+        ) : (
+          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+            <Icon className="size-3.5" />
+          </span>
+        )}
+        {!last && <span className="mt-1 w-px flex-1 bg-border/70" aria-hidden />}
       </div>
 
-      <div className="min-w-0 flex-1 pb-0.5">
-        {isWalk ? (
-          <p className="text-sm font-semibold">
-            Walk {segment.minutes} min
-            <span className="ml-1.5 font-normal text-muted-foreground">
-              (
-              {segment.distanceMeters < 1000
-                ? `${Math.round(segment.distanceMeters)} m`
-                : `${(segment.distanceMeters / 1000).toFixed(1)} km`}
-              )
-            </span>
+      {isWalk ? (
+        <div className="flex min-w-0 flex-1 items-center">
+          <p className="text-xs font-medium text-muted-foreground">
+            Walk {segment.minutes} min <span className="mx-0.5">·</span> {distance}
           </p>
-        ) : (
-          <>
-            <p className="flex flex-wrap items-center gap-1.5 text-sm font-semibold">
-              {segment.transit?.line ? (
-                <span className="rounded-md bg-primary px-1.5 py-0.5 text-[11px] font-bold text-primary-foreground">
-                  {segment.transit.line}
-                </span>
-              ) : null}
+        </div>
+      ) : (
+        <div className="min-w-0 flex-1 pb-1">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {segment.transit?.line ? (
+              <span className="shrink-0 rounded-md bg-primary px-2 py-0.5 text-xs font-extrabold text-primary-foreground">
+                {segment.transit.line}
+              </span>
+            ) : null}
+            <span dir="auto" className="text-sm font-bold leading-tight">
               {segment.transit?.headsign ??
                 (segment.transit?.vehicle ? VEHICLE_LABEL[segment.transit.vehicle] : "Transit")}
+            </span>
+          </div>
+          {(dep || arr || segment.transit?.stopCount) && (
+            <p className="mt-0.5 text-xs font-semibold text-foreground/75">
+              {dep ?? ""}
+              {dep && arr ? " → " : ""}
+              {arr ?? ""}
+              {segment.transit?.stopCount
+                ? `${dep || arr ? " · " : ""}${segment.transit.stopCount} stops`
+                : ""}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {segment.transit?.departureStop ?? "Board"}
-              {dep ? ` · ${dep}` : ""}
-              {" → "}
-              {segment.transit?.arrivalStop ?? "Alight"}
-              {arr ? ` · ${arr}` : ""}
-            </p>
-            {segment.transit?.stopCount ? (
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                {segment.transit.stopCount} stops
-              </p>
-            ) : null}
-          </>
-        )}
-        {first && !isWalk ? null : null}
-      </div>
+          )}
+          <p dir="auto" className="mt-0.5 text-[11px] leading-snug text-muted-foreground">
+            {segment.transit?.departureStop ?? "Board"} → {segment.transit?.arrivalStop ?? "Alight"}
+          </p>
+        </div>
+      )}
     </div>
+  );
+}
+
+/* ─────────────────────────────── Rav-Kav card ────────────────────────────── */
+
+function RavKavCard() {
+  const guide = getGuide("rav-kav");
+  return (
+    <Link
+      to="/guides/$id"
+      params={{ id: "rav-kav" }}
+      className="tap-flat flex items-start gap-3 rounded-2xl bg-muted/60 px-4 py-3.5"
+    >
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-card text-lg shadow-card">
+        {guide?.emoji ?? "🚌"}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-bold leading-tight">New to Israeli transport?</span>
+        <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+          {guide?.blurb ?? "Rav-Kav, student discounts and what the beeps mean."}
+        </span>
+        <span className="mt-1.5 inline-flex items-center gap-0.5 text-[11px] font-bold text-primary">
+          Read the guide <ChevronRight className="size-3" />
+        </span>
+      </span>
+    </Link>
   );
 }
 
@@ -607,7 +890,7 @@ function BasicPlanner({ origin, term }: { origin: Origin | null; term: string })
   const clean = term.trim();
 
   return (
-    <Card className="space-y-2 text-center">
+    <Card className="space-y-2 border-0 bg-muted/60 text-center shadow-none">
       <p className="text-xs leading-relaxed text-muted-foreground">
         In-app search and real travel times aren&rsquo;t switched on yet — type a destination above
         and get a real Google Maps route.

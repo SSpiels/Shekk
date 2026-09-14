@@ -179,7 +179,11 @@ export function useTravelTo(to: LatLon | null, modes?: ("WALK" | "TRANSIT" | "DR
       }),
   });
 
-  return { travel: query.data ?? null, loading: query.isFetching };
+  return {
+    travel: query.data ?? null,
+    loading: query.isFetching,
+    error: query.error instanceof Error ? query.error.message : null,
+  };
 }
 
 /**
