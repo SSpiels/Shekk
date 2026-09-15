@@ -28,7 +28,8 @@ export const Route = createFileRoute("/explore/fitness/$id")({
       { property: "og:title", content: "Venue · Fitness · Shekk" },
       {
         property: "og:description",
-        content: "Hours, ratings, travel time and Shekk's own notes on pricing and contract length.",
+        content:
+          "Hours, ratings, travel time and Shekk's own notes on pricing and contract length.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
@@ -46,10 +47,16 @@ function VenueDetail() {
   return (
     <AppShell>
       <header className="sticky top-0 z-20 flex items-center gap-2 border-b border-border bg-background/90 px-4 py-3 backdrop-blur">
-        <Link to="/explore/fitness" className="tap-flat rounded-full bg-muted p-2" aria-label="Back to Fitness">
+        <Link
+          to="/explore/fitness/discover"
+          className="tap-flat rounded-full bg-muted p-2"
+          aria-label="Back to Fitness"
+        >
           <ArrowLeft className="size-4" />
         </Link>
-        <p className="min-w-0 flex-1 truncate font-display text-base font-bold">{place?.name ?? "Venue"}</p>
+        <p className="min-w-0 flex-1 truncate font-display text-base font-bold">
+          {place?.name ?? "Venue"}
+        </p>
         {place && saved.canSave && (
           <button
             type="button"
@@ -68,7 +75,8 @@ function VenueDetail() {
       <div className="space-y-4 px-4 py-4">
         {ready === false && (
           <Card className="text-sm text-muted-foreground">
-            Venue details come from Google Maps. Once that connection is linked, this page fills in automatically.
+            Venue details come from Google Maps. Once that connection is linked, this page fills in
+            automatically.
           </Card>
         )}
         {loading && <PlacesLoading label="Loading this venue…" />}
@@ -89,7 +97,9 @@ function VenueDetail() {
               {place.rating !== null && (
                 <p className="inline-flex items-center gap-1 text-sm font-semibold">
                   <Star className="size-4 fill-current" /> {place.rating.toFixed(1)}
-                  {place.reviews ? <span className="text-muted-foreground">({place.reviews})</span> : null}
+                  {place.reviews ? (
+                    <span className="text-muted-foreground">({place.reviews})</span>
+                  ) : null}
                 </p>
               )}
             </div>
@@ -100,7 +110,9 @@ function VenueDetail() {
 
             {(place.meta.facilities ?? []).length > 0 && (
               <Card className="space-y-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Facilities</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Facilities
+                </p>
                 <div className="flex flex-wrap gap-2">
                   {(place.meta.facilities ?? []).map((f: string) => (
                     <span key={f} className="rounded-full bg-muted px-3 py-1 text-xs font-semibold">
@@ -115,7 +127,9 @@ function VenueDetail() {
 
             {place.meta.notes && (
               <Card className="space-y-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Shekk's notes</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Shekk's notes
+                </p>
                 {place.meta.notes.split("\n").map((line: string, i: number) => (
                   <p key={i} className="text-sm text-muted-foreground">
                     {line}

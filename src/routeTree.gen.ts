@@ -101,6 +101,7 @@ import { Route as ApiAuthEmailWebhookRouteImport } from './routes/api/auth/email
 import { Route as ExploreEventIdRouteImport } from './routes/explore/event.$id'
 import { Route as ExploreFitnessIndexRouteImport } from './routes/explore/fitness.index'
 import { Route as ExploreFitnessIdRouteImport } from './routes/explore/fitness.$id'
+import { Route as ExploreFitnessDiscoverRouteImport } from './routes/explore/fitness.discover'
 import { Route as ExploreIdfIndexRouteImport } from './routes/explore/idf.index'
 import { Route as ExploreIdfUnitIdRouteImport } from './routes/explore/idf.$unitId'
 import { Route as ExploreMapIndexRouteImport } from './routes/explore/map.index'
@@ -575,6 +576,11 @@ const ExploreFitnessIdRoute = ExploreFitnessIdRouteImport.update({
   path: '/explore/fitness/$id',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ExploreFitnessDiscoverRoute = ExploreFitnessDiscoverRouteImport.update({
+  id: '/explore/fitness/discover',
+  path: '/explore/fitness/discover',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ExploreIdfIndexRoute = ExploreIdfIndexRouteImport.update({
   id: '/explore/idf/',
   path: '/explore/idf/',
@@ -735,6 +741,7 @@ export interface FileRoutesByFullPath {
   '/api/auth/email-webhook': typeof ApiAuthEmailWebhookRoute
   '/explore/event/$id': typeof ExploreEventIdRoute
   '/explore/fitness/$id': typeof ExploreFitnessIdRoute
+  '/explore/fitness/discover': typeof ExploreFitnessDiscoverRoute
   '/explore/idf/$unitId': typeof ExploreIdfUnitIdRoute
   '/explore/map/$id': typeof ExploreMapIdRoute
   '/explore/service/$id': typeof ExploreServiceIdRoute
@@ -839,6 +846,7 @@ export interface FileRoutesByTo {
   '/api/auth/email-webhook': typeof ApiAuthEmailWebhookRoute
   '/explore/event/$id': typeof ExploreEventIdRoute
   '/explore/fitness/$id': typeof ExploreFitnessIdRoute
+  '/explore/fitness/discover': typeof ExploreFitnessDiscoverRoute
   '/explore/idf/$unitId': typeof ExploreIdfUnitIdRoute
   '/explore/map/$id': typeof ExploreMapIdRoute
   '/explore/service/$id': typeof ExploreServiceIdRoute
@@ -947,6 +955,7 @@ export interface FileRoutesById {
   '/api/auth/email-webhook': typeof ApiAuthEmailWebhookRoute
   '/explore/event/$id': typeof ExploreEventIdRoute
   '/explore/fitness/$id': typeof ExploreFitnessIdRoute
+  '/explore/fitness/discover': typeof ExploreFitnessDiscoverRoute
   '/explore/idf/$unitId': typeof ExploreIdfUnitIdRoute
   '/explore/map/$id': typeof ExploreMapIdRoute
   '/explore/service/$id': typeof ExploreServiceIdRoute
@@ -1056,6 +1065,7 @@ export interface FileRouteTypes {
     | '/api/auth/email-webhook'
     | '/explore/event/$id'
     | '/explore/fitness/$id'
+    | '/explore/fitness/discover'
     | '/explore/idf/$unitId'
     | '/explore/map/$id'
     | '/explore/service/$id'
@@ -1160,6 +1170,7 @@ export interface FileRouteTypes {
     | '/api/auth/email-webhook'
     | '/explore/event/$id'
     | '/explore/fitness/$id'
+    | '/explore/fitness/discover'
     | '/explore/idf/$unitId'
     | '/explore/map/$id'
     | '/explore/service/$id'
@@ -1267,6 +1278,7 @@ export interface FileRouteTypes {
     | '/api/auth/email-webhook'
     | '/explore/event/$id'
     | '/explore/fitness/$id'
+    | '/explore/fitness/discover'
     | '/explore/idf/$unitId'
     | '/explore/map/$id'
     | '/explore/service/$id'
@@ -1351,6 +1363,7 @@ export interface RootRouteChildren {
   ApiAuthEmailWebhookRoute: typeof ApiAuthEmailWebhookRoute
   ExploreEventIdRoute: typeof ExploreEventIdRoute
   ExploreFitnessIdRoute: typeof ExploreFitnessIdRoute
+  ExploreFitnessDiscoverRoute: typeof ExploreFitnessDiscoverRoute
   ExploreIdfUnitIdRoute: typeof ExploreIdfUnitIdRoute
   ExploreMapIdRoute: typeof ExploreMapIdRoute
   ExploreServiceIdRoute: typeof ExploreServiceIdRoute
@@ -2011,6 +2024,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ExploreFitnessIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/explore/fitness/discover': {
+      id: '/explore/fitness/discover'
+      path: '/explore/fitness/discover'
+      fullPath: '/explore/fitness/discover'
+      preLoaderRoute: typeof ExploreFitnessDiscoverRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/explore/idf/': {
       id: '/explore/idf/'
       path: '/explore/idf'
@@ -2255,6 +2275,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAuthEmailWebhookRoute: ApiAuthEmailWebhookRoute,
   ExploreEventIdRoute: ExploreEventIdRoute,
   ExploreFitnessIdRoute: ExploreFitnessIdRoute,
+  ExploreFitnessDiscoverRoute: ExploreFitnessDiscoverRoute,
   ExploreIdfUnitIdRoute: ExploreIdfUnitIdRoute,
   ExploreMapIdRoute: ExploreMapIdRoute,
   ExploreServiceIdRoute: ExploreServiceIdRoute,
