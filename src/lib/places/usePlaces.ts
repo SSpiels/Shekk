@@ -194,9 +194,17 @@ export function usePlacePhoto(photoName: string | undefined, maxWidthPx = 800) {
   const resolve = useServerFn(placePhotoUrl);
   const query = useQuery({
     queryKey: ["places", "photo", photoName ?? "none", maxWidthPx],
-    // Photo resource names and resolved URLs expire, so nothing is kept.
     enabled: Boolean(photoName),
-    ...GOOGLE_QUERY,
+    // Photos deliberately do NOT use the refetch-every-mount GOOGLE_QUERY
+    // policy below: a place card remounts on every navigation in and out of
+    // a list (Fitness, Maps, venue detail), and Google's Places Photos
+    // endpoint is billed per call — refetching an unchanged photo on every
+    // single remount ran up real cost for no benefit (a resolved photo URL
+    // doesn't go stale on the timescale of a browsing session). Still never
+    // written to disk/DB and still garbage collected out of memory shortly
+    // after use — just not force-refetched within this short window.
+    staleTime: 60_000,
+    gcTime: 60_000,
     retry: false,
     queryFn: () => resolve({ data: { photoName: photoName!, maxWidthPx } }),
   });
