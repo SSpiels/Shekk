@@ -15,14 +15,117 @@ import type { PlaceRef, RouteBounds } from "@/lib/places/types";
  *  canvas-rendered overlays need a literal color, not a CSS custom property. */
 const ROUTE_COLOR = "#3D4FC4";
 const WALK_COLOR = "#94A3B8";
+const PIN_COLOR = "#3D4FC4";
+
+/** A pin with a hollow centre — same silhouette as the app's own MapPin icon,
+ *  so the map marker and the rail icon in Getting Around read as one mark. */
+const PIN_PATH =
+  "M12 0C7.6 0 4 3.6 4 8c0 6 8 16 8 16s8-10 8-16c0-4.4-3.6-8-8-8zm0 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6z";
+
+/** A branded destination pin instead of Google's stock red teardrop — needs
+ *  `window.google` to already be loaded, so build it lazily, not at module scope. */
+function destinationPinIcon() {
+  return {
+    path: PIN_PATH,
+    fillColor: PIN_COLOR,
+    fillOpacity: 1,
+    strokeColor: "#FFFFFF",
+    strokeWeight: 1.5,
+    scale: 1.6,
+    anchor: new window.google!.maps.Point(12, 24),
+  };
+}
+
+type StyleRule = {
+  featureType?: string;
+  elementType?: string;
+  stylers: Record<string, string | number>[];
+};
+
+/**
+ * A quiet, branded base map so Getting Around (and every other Shekk screen
+ * that uses this canvas) reads as part of the product, not a bare embed of
+ * default Google Maps. Muted throughout, most POI icon clutter turned off
+ * (restaurants, shops, etc.) since Shekk draws its own markers — transit
+ * stations stay visible, this is a transit app. Light and dark variants so
+ * the map never sits as a bright rectangle in the app's dark theme; nothing
+ * about the underlying map data changes, only its paint.
+ */
+function buildMapStyle(c: {
+  base: string;
+  landscape: string;
+  road: string;
+  roadStroke: string;
+  highway: string;
+  water: string;
+  park: string;
+  transitStation: string;
+  labelFill: string;
+  labelStroke: string;
+}): StyleRule[] {
+  return [
+    { elementType: "geometry", stylers: [{ color: c.base }] },
+    { elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+    { elementType: "labels.text.fill", stylers: [{ color: c.labelFill }] },
+    { elementType: "labels.text.stroke", stylers: [{ color: c.labelStroke }, { weight: 2.5 }] },
+    { featureType: "administrative", elementType: "geometry", stylers: [{ visibility: "off" }] },
+    { featureType: "landscape", elementType: "geometry", stylers: [{ color: c.landscape }] },
+    { featureType: "poi", stylers: [{ visibility: "off" }] },
+    {
+      featureType: "poi.park",
+      elementType: "geometry",
+      stylers: [{ color: c.park }, { visibility: "on" }],
+    },
+    { featureType: "road", elementType: "geometry", stylers: [{ color: c.road }] },
+    { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: c.roadStroke }] },
+    { featureType: "road.highway", elementType: "geometry", stylers: [{ color: c.highway }] },
+    { featureType: "road", elementType: "labels.icon", stylers: [{ visibility: "off" }] },
+    { featureType: "transit", stylers: [{ visibility: "off" }] },
+    {
+      featureType: "transit.station",
+      elementType: "geometry",
+      stylers: [{ visibility: "on" }, { color: c.transitStation }],
+    },
+    { featureType: "water", elementType: "geometry", stylers: [{ color: c.water }] },
+  ];
+}
+
+const MAP_STYLE_LIGHT = buildMapStyle({
+  base: "#F4F5FA",
+  landscape: "#EAEDF6",
+  road: "#FFFFFF",
+  roadStroke: "#DADFEE",
+  highway: "#DCE1F5",
+  water: "#BFD3F2",
+  park: "#CFE3D2",
+  transitStation: "#AEB9EC",
+  labelFill: "#5B6288",
+  labelStroke: "#F4F5FA",
+});
+
+const MAP_STYLE_DARK = buildMapStyle({
+  base: "#161C47",
+  landscape: "#1B2352",
+  road: "#262E63",
+  roadStroke: "#333C78",
+  highway: "#333F8A",
+  water: "#1A2F6E",
+  park: "#183526",
+  transitStation: "#4C5BD1",
+  labelFill: "#AEB6E4",
+  labelStroke: "#161C47",
+});
+
+/** Same source of truth every other Shekk surface paints from. */
+function isDarkMode() {
+  return typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+}
 
 export const BROWSER_KEY = import.meta.env["VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_BROWSER_KEY"] as
-  | string
-  | undefined;
+  string | undefined;
 
 const TRACKING_ID = import.meta.env["VITE_LOVABLE_CONNECTOR_GOOGLE_MAPS_TRACKING_ID"] as
-  | string
-  | undefined;
+  string | undefined;
 
 declare global {
   interface Window {
@@ -81,6 +184,7 @@ export function GoogleMapCanvas({
   const markers = useRef<Map<string, any>>(new Map());
   const me = useRef<any>(null);
   const lines = useRef<any[]>([]);
+  const themeObserver = useRef<MutationObserver | null>(null);
   // Every effect below touches `map.current`, which is set inside an async
   // `.then()` — a plain ref mutation doesn't cause those effects to re-run,
   // so without this flag any effect whose OTHER dependencies never change
@@ -99,15 +203,28 @@ export function GoogleMapCanvas({
           disableDefaultUI: true,
           zoomControl: true,
           clickableIcons: false,
-          gestureHandling: "greedy",
+          gestureHandling: "cooperative",
+          styles: isDarkMode() ? MAP_STYLE_DARK : MAP_STYLE_LIGHT,
         });
         setMapReady(true);
+
+        // The map style is a fixed paint, not a CSS variable — repaint it
+        // when the app's own dark-mode class flips so the map never sits as
+        // a bright (or inverted-dark) rectangle against the current theme.
+        themeObserver.current = new MutationObserver(() => {
+          map.current?.setOptions({ styles: isDarkMode() ? MAP_STYLE_DARK : MAP_STYLE_LIGHT });
+        });
+        themeObserver.current.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ["class"],
+        });
       })
       .catch(() => {
         /* no key or blocked referrer — the list view carries the screen */
       });
     return () => {
       dead = true;
+      themeObserver.current?.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -159,6 +276,7 @@ export function GoogleMapCanvas({
         position: { lat: p.lat, lng: p.lon },
         title: p.name,
         zIndex: active ? 40 : 10,
+        icon: destinationPinIcon(),
       });
       marker.addListener("click", () => onSelect(p.id));
       markers.current.set(p.id, marker);

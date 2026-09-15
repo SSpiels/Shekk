@@ -331,13 +331,13 @@ function JourneyBar({
 
   return (
     <div className="space-y-1.5">
-      <div className="relative rounded-3xl bg-card px-3 shadow-card">
+      <div className="rounded-2xl border border-border bg-card px-5 pb-2 shadow-card">
         <div className="flex gap-3">
           {/* origin/destination rail */}
           <div className="flex w-4 shrink-0 flex-col items-center pt-[22px]">
             <span className="size-2.5 shrink-0 rounded-full border-2 border-primary bg-card" />
             <span className="w-px flex-1 bg-border/70" aria-hidden />
-            <MapPin className="size-4 shrink-0 -translate-x-[3px] text-primary" />
+            <MapPin className="size-4 shrink-0 text-primary" />
           </div>
 
           <div className="min-w-0 flex-1">
@@ -363,7 +363,18 @@ function JourneyBar({
               </button>
             </div>
 
-            <div className="h-px bg-border/50" />
+            <div className="relative flex h-8 items-center">
+              <span className="h-px w-full bg-border/50" aria-hidden />
+              <button
+                type="button"
+                aria-label="Swap origin and destination"
+                onClick={onSwap}
+                disabled={!destinationLabel}
+                className="tap absolute right-0 top-0 flex size-8 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-card disabled:pointer-events-none disabled:opacity-0"
+              >
+                <ArrowUpDown className="size-3.5" />
+              </button>
+            </div>
 
             {/* destination row */}
             <div className="flex items-center gap-2 py-3">
@@ -396,16 +407,6 @@ function JourneyBar({
             </div>
           </div>
         </div>
-
-        <button
-          type="button"
-          aria-label="Swap origin and destination"
-          onClick={onSwap}
-          disabled={!destinationLabel}
-          className="tap absolute right-3 top-1/2 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-muted text-muted-foreground shadow-card disabled:pointer-events-none disabled:opacity-0"
-        >
-          <ArrowUpDown className="size-3.5" />
-        </button>
       </div>
 
       {changingOrigin && (
@@ -484,7 +485,7 @@ function EmptyState({
               key={q.label}
               type="button"
               onClick={() => onQuickPick(q.query)}
-              className="tap-flat flex min-h-[52px] items-center gap-2.5 rounded-2xl bg-card px-3.5 py-3 text-left shadow-card"
+              className="tap-flat flex min-h-[52px] items-center gap-2.5 rounded-2xl border border-border bg-card px-3.5 py-3 text-left shadow-card"
             >
               <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-primary">
                 <q.icon className="size-4" />
@@ -514,7 +515,9 @@ function EmptyState({
                 ) : (
                   <History className="size-3.5 shrink-0 text-muted-foreground" />
                 )}
-                <span className="max-w-[13rem] truncate">{r.name}</span>
+                <span dir="auto" className="max-w-[13rem] truncate">
+                  {r.name}
+                </span>
               </button>
             ))}
           </div>
@@ -549,7 +552,7 @@ function DestinationResults({
   }
 
   return (
-    <div className="-mx-1 divide-y divide-border/60 overflow-hidden rounded-2xl bg-card shadow-card">
+    <div className="-mx-1 divide-y divide-border/60 overflow-hidden rounded-2xl border border-border bg-card shadow-card">
       {feed.places.slice(0, 8).map((p) => (
         <button
           key={p.id}
@@ -562,8 +565,10 @@ function DestinationResults({
         >
           <MapPin className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-semibold">{p.name}</span>
-            <span className="block truncate text-xs text-muted-foreground">
+            <span dir="auto" className="block truncate text-sm font-semibold">
+              {p.name}
+            </span>
+            <span dir="auto" className="block truncate text-xs text-muted-foreground">
               {p.address}
               {p.distanceKm !== undefined ? ` · ${kmAway(p.distanceKm)}` : ""}
             </span>
@@ -627,8 +632,8 @@ function JourneyResults({ origin, destination }: { origin: Origin | null; destin
     : null;
 
   return (
-    <div className="space-y-3">
-      <div className="overflow-hidden rounded-3xl shadow-card">
+    <div className="animate-[splash-pop_400ms_ease-out] space-y-3">
+      <div className="overflow-hidden rounded-3xl border border-border shadow-card">
         <PlaceMap
           centre={{ lat: origin.lat, lon: origin.lon }}
           places={[{ ...destination }]}
@@ -788,7 +793,7 @@ function JourneyTimeline({ leg }: { leg: TravelLeg }) {
         ];
 
   return (
-    <div className="space-y-0 rounded-3xl bg-card px-1 py-1 shadow-card">
+    <div className="space-y-0 rounded-3xl border border-border bg-card px-1 py-1 shadow-card">
       {segments.map((s, i) => (
         <TimelineRow key={i} segment={s} last={i === segments.length - 1} />
       ))}
