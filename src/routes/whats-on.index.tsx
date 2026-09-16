@@ -1,13 +1,14 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Flame, Moon, PartyPopper, Search, Sun, Ticket, X } from "lucide-react";
+import { CalendarDays, Moon, PartyPopper, Search, SlidersHorizontal, Sun, Ticket, X } from "lucide-react";
 import { AppShell, Card } from "@/components/AppShell";
 import { ErrorState } from "@/components/Kit";
-import { dayLabel, eventWhen, useEvents } from "@/lib/useEvents";
+import { dayLabel, eventWhen, useEvents, useMyTickets } from "@/lib/useEvents";
 import { ils } from "@/lib/mock";
 import {
   DISCOVERY_LABEL,
   DISCOVERY_ORDER,
+  EVENING_HOUR,
   categoryOf,
   discoveryOf,
   groupByDay,
@@ -40,28 +41,21 @@ export const Route = createFileRoute("/whats-on/")({
   component: WhatsOnScreen,
 });
 
-/**
- * The main discovery structure: four time-based quick picks a student can
- * tap in one move. Each toggles off if tapped again (back to "any date"),
- * the same pattern the Free chip below already uses. Shabbat is a shortcut
- * over the existing weekend window + Jewish category, not a new date concept
- * — a real sundown/havdalah-aware window is a later improvement, not this
- * sprint's.
- */
-const QUICK_PICKS: { id: DateFilter; label: string; icon: typeof Moon }[] = [
-  { id: "tonight", label: "Tonight", icon: Moon },
-  { id: "today", label: "Today", icon: Sun },
-  { id: "weekend", label: "This weekend", icon: PartyPopper },
-];
+/** Before EVENING_HOUR local time the WHEN control reads "Today"; from then on, "Tonight". Same boundary the filter itself uses. */
+function isEveningNow(now: Date): boolean {
+  return now.getHours() >= EVENING_HOUR;
+}
 
 function WhatsOnScreen() {
   const { data, isLoading, error, refetch } = useEvents();
+  const { data: tickets } = useMyTickets();
   const [query, setQuery] = useState("");
   const [dateFilter, setDateFilter] = useState<DateFilter>("any");
   const [pickedDate, setPickedDate] = useState<string>("");
   const [category, setCategory] = useState<DiscoveryCategory>("all");
   const [city, setCity] = useState<string | null>(null);
   const [freeOnly, setFreeOnly] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const activities = data ?? [];
 
@@ -89,8 +83,8 @@ function WhatsOnScreen() {
     if (shown.length > 0) track("activity_impression", { count: shown.length, category, date: dateFilter });
   }, [shown.length, category, dateFilter]);
 
-  const filtering =
-    Boolean(query.trim()) || dateFilter !== "any" || Boolean(pickedDate) || category !== "all" || Boolean(city) || freeOnly;
+  const secondaryFilterCount = (city ? 1 : 0) + (freeOnly ? 1 : 0);
+  const filtering = Boolean(query.trim()) || dateFilter !== "any" || Boolean(pickedDate) || category !== "all" || secondaryFilterCount > 0;
 
   const clearFilters = () => {
     setQuery("");
@@ -101,34 +95,27 @@ function WhatsOnScreen() {
     setFreeOnly(false);
   };
 
-  const toggleQuickDate = (id: DateFilter) => {
+  const toggleDate = (id: DateFilter) => {
     setPickedDate("");
     setDateFilter((cur) => (cur === id ? "any" : id));
   };
 
-  const shabbatActive = !pickedDate && dateFilter === "weekend" && category === "jewish";
-  const toggleShabbat = () => {
-    setPickedDate("");
-    if (shabbatActive) {
-      setDateFilter("any");
-      setCategory("all");
-    } else {
-      setDateFilter("weekend");
-      setCategory("jewish");
-    }
-  };
+  const evening = isEveningNow(new Date());
+  const primaryWhen: DateFilter = evening ? "tonight" : "today";
+  const primaryLabel = evening ? "Tonight" : "Today";
+  const PrimaryIcon = evening ? Moon : Sun;
+
+  const savedCount = tickets?.length ?? null;
 
   return (
     <AppShell>
-      <header className="px-5 pt-7">
-        <h1 className="font-display text-4xl font-bold tracking-tight">What&apos;s On</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Tonight, this weekend, or for Shabbat — see what&apos;s actually on.
-        </p>
+      <header className="px-5 pt-5">
+        <h1 className="font-display text-3xl font-bold tracking-tight">What&apos;s On</h1>
+        <p className="mt-0.5 text-sm text-muted-foreground">See what&apos;s actually on, right now.</p>
       </header>
 
-      <div className="sticky top-0 z-30 -mt-1 space-y-3 bg-background/85 px-4 pb-3 pt-4 backdrop-blur-xl">
-        <label className="flex items-center gap-2 rounded-2xl bg-muted px-4 py-3 text-sm shadow-card">
+      <div className="sticky top-0 z-30 -mt-1 space-y-2.5 bg-background/85 px-4 pb-3 pt-3 backdrop-blur-xl">
+        <label className="flex items-center gap-2 rounded-2xl bg-muted px-4 py-2.5 text-sm shadow-card">
           <Search className="size-4 shrink-0 text-muted-foreground" />
           <input
             value={query}
@@ -143,44 +130,58 @@ function WhatsOnScreen() {
           ) : null}
         </label>
 
-        <div className="grid grid-cols-4 gap-2">
-          {QUICK_PICKS.map((p) => {
-            const active = !pickedDate && dateFilter === p.id;
-            return (
-              <QuickPick key={p.id} active={active} onClick={() => toggleQuickDate(p.id)} icon={p.icon}>
-                {p.label}
-              </QuickPick>
-            );
-          })}
-          <QuickPick active={shabbatActive} onClick={toggleShabbat} icon={Flame}>
-            Shabbat
-          </QuickPick>
-        </div>
-
-        <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1">
+        {/* WHEN — when do I want to go? */}
+        <div className="flex items-center gap-1.5">
+          <WhenPill active={!pickedDate && dateFilter === primaryWhen} onClick={() => toggleDate(primaryWhen)} icon={PrimaryIcon}>
+            {primaryLabel}
+          </WhenPill>
+          <WhenPill active={!pickedDate && dateFilter === "tomorrow"} onClick={() => toggleDate("tomorrow")}>
+            Tomorrow
+          </WhenPill>
+          <WhenPill active={!pickedDate && dateFilter === "weekend"} onClick={() => toggleDate("weekend")} icon={PartyPopper}>
+            Weekend
+          </WhenPill>
           <label
-            className={`tap flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${
-              pickedDate ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+            className={`tap-flat relative flex size-9 shrink-0 items-center justify-center rounded-xl border ${
+              pickedDate ? "border-primary bg-primary text-primary-foreground" : "border-dashed border-border text-muted-foreground"
             }`}
+            aria-label={pickedDate ? `Date: ${pickedDate}` : "Pick a date"}
           >
-            <CalendarDays className="size-3.5" />
-            {pickedDate ? new Date(`${pickedDate}T00:00:00`).toLocaleDateString("en-GB", { day: "numeric", month: "short" }) : "Pick a date"}
+            <CalendarDays className="size-4" />
             <input
               type="date"
               value={pickedDate}
               onChange={(e) => setPickedDate(e.target.value)}
               aria-label="Pick a date"
-              className="w-0 opacity-0"
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             />
           </label>
-          {DISCOVERY_ORDER.map((c) => (
-            <Chip key={c} active={category === c} onClick={() => setCategory(c)}>
+        </div>
+
+        {/* WHAT — what do I want to do? Visually distinct from WHEN: rounded-full tags vs rounded-xl controls. */}
+        <div className="flex flex-wrap gap-1.5">
+          {DISCOVERY_ORDER.filter((c) => c !== "all").map((c) => (
+            <Chip key={c} active={category === c} onClick={() => setCategory((cur) => (cur === c ? "all" : c))}>
               {DISCOVERY_LABEL[c]}
             </Chip>
           ))}
+          <button
+            onClick={() => setFiltersOpen((v) => !v)}
+            className={`tap-flat ml-auto flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold ${
+              filtersOpen || secondaryFilterCount > 0 ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
+            }`}
+          >
+            <SlidersHorizontal className="size-3.5" />
+            Filters
+            {secondaryFilterCount > 0 ? (
+              <span className="flex size-4 items-center justify-center rounded-full bg-primary-foreground/25 text-[10px]">
+                {secondaryFilterCount}
+              </span>
+            ) : null}
+          </button>
         </div>
 
-        {(cities.length > 0 || activities.some((a) => a.price === 0)) && (
+        {filtersOpen && (cities.length > 0 || activities.some((a) => a.price === 0)) && (
           <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1">
             <Chip active={freeOnly} onClick={() => setFreeOnly((v) => !v)}>
               Free
@@ -195,16 +196,13 @@ function WhatsOnScreen() {
       </div>
 
       <div className="px-4 pb-8">
-        <Link
-          to="/tickets"
-          className="tap mb-4 flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3 shadow-card"
-        >
-          <Ticket className="size-5 shrink-0 text-primary" />
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold">My plans</p>
-            <p className="text-xs text-muted-foreground">Tickets and everything you&apos;re booked on</p>
-          </div>
-          <span className="shrink-0 text-sm font-semibold text-primary">→</span>
+        <Link to="/tickets" className="tap mb-3 flex items-center justify-between rounded-xl bg-muted px-4 py-2.5">
+          <span className="flex items-center gap-2 text-sm font-semibold">
+            <Ticket className="size-4 text-primary" />
+            My plans
+            {savedCount ? <span className="text-muted-foreground">· {savedCount} saved</span> : null}
+          </span>
+          <span className="text-sm font-semibold text-primary">→</span>
         </Link>
 
         {isLoading && (
@@ -249,12 +247,12 @@ function WhatsOnScreen() {
           </Card>
         )}
 
-        <div className="space-y-6">
+        <div className="space-y-5">
           {groups.map((group) => {
             const label = dayLabel(group.items[0].startsAt);
             const compact = label === "Today" || label === "Tomorrow";
             return (
-              <div key={group.key} className="space-y-2.5">
+              <div key={group.key} className="space-y-2">
                 <p className="px-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">{label}</p>
                 {group.items.map((a) => (
                   <ActivityCard key={a.id} activity={a} compact={compact} />
@@ -268,7 +266,7 @@ function WhatsOnScreen() {
   );
 }
 
-function QuickPick({
+function WhenPill({
   children,
   active,
   onClick,
@@ -277,19 +275,17 @@ function QuickPick({
   children: React.ReactNode;
   active: boolean;
   onClick: () => void;
-  icon: typeof Moon;
+  icon?: typeof Moon;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`tap flex flex-col items-center gap-1.5 rounded-2xl border px-2 py-3 text-center ${
-        active
-          ? "border-primary bg-primary text-primary-foreground shadow-card"
-          : "border-border bg-card text-foreground shadow-card"
+      className={`tap flex h-9 flex-1 items-center justify-center gap-1 rounded-xl px-2 text-xs font-bold ${
+        active ? "bg-primary text-primary-foreground" : "bg-card text-foreground shadow-card"
       }`}
     >
-      <Icon className="size-5" />
-      <span className="text-[11px] font-bold leading-tight">{children}</span>
+      {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
+      <span className="truncate">{children}</span>
     </button>
   );
 }

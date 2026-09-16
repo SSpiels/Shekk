@@ -181,14 +181,29 @@ describe("matchesDiscovery", () => {
 });
 
 describe("date filters", () => {
-  const now = new Date("2026-08-26T12:00:00.000Z"); // Wednesday
+  const now = new Date("2026-08-26T12:00:00.000Z"); // Wednesday, noon
 
-  it("matches today and only evening items for tonight", () => {
-    const evening = new Date("2026-08-26T21:00:00.000Z").toISOString();
-    const morning = new Date("2026-08-26T09:00:00.000Z").toISOString();
-    expect(matchesDate(evening, "today", { now })).toBe(true);
-    expect(matchesDate(morning, "today", { now })).toBe(true);
-    expect(matchesDate(morning, "tonight", { now })).toBe(false);
+  it("today only shows what's still ahead, not what's already passed", () => {
+    const laterToday = new Date("2026-08-26T21:00:00.000Z").toISOString();
+    const earlierToday = new Date("2026-08-26T09:00:00.000Z").toISOString();
+    expect(matchesDate(laterToday, "today", { now })).toBe(true);
+    expect(matchesDate(earlierToday, "today", { now })).toBe(false);
+  });
+
+  it("tonight only shows the evening window, even for an event later than now but before it", () => {
+    const evening = new Date("2026-08-26T21:00:00.000Z").toISOString(); // after 17:00 local-equivalent
+    const lateAfternoon = new Date("2026-08-26T13:00:00.000Z").toISOString(); // after now, but before the evening boundary
+    expect(matchesDate(evening, "tonight", { now })).toBe(true);
+    expect(matchesDate(lateAfternoon, "tonight", { now })).toBe(false);
+  });
+
+  it("tomorrow only matches the following calendar day", () => {
+    const laterToday = new Date("2026-08-26T21:00:00.000Z").toISOString();
+    const tomorrow = new Date("2026-08-27T10:00:00.000Z").toISOString();
+    const dayAfter = new Date("2026-08-28T10:00:00.000Z").toISOString();
+    expect(matchesDate(laterToday, "tomorrow", { now })).toBe(false);
+    expect(matchesDate(tomorrow, "tomorrow", { now })).toBe(true);
+    expect(matchesDate(dayAfter, "tomorrow", { now })).toBe(false);
   });
 
   it("matches the coming Friday/Shabbat for the weekend", () => {

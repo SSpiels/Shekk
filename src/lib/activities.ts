@@ -50,7 +50,10 @@ export const CATEGORY_ORDER: ActivityCategory[] = [
   "programme",
 ];
 
-export type DateFilter = "any" | "today" | "tonight" | "weekend" | "date";
+export type DateFilter = "any" | "today" | "tonight" | "tomorrow" | "weekend" | "date";
+
+/** The hour (local time) at which the WHEN control switches from "Today" to "Tonight". */
+export const EVENING_HOUR = 17;
 
 /** The minimum shape both the list and the detail screen work with. */
 export type ActivityLike = {
@@ -173,11 +176,24 @@ export function matchesDate(
 
   if (filter === "any") return true;
 
-  if (filter === "today" || filter === "tonight") {
-    const from = startOfDay(now);
-    const to = new Date(from.getTime() + DAY);
-    if (start < from || start >= to) return false;
-    return filter === "today" ? true : start.getHours() >= 18;
+  const todayStart = startOfDay(now);
+  const todayEnd = new Date(todayStart.getTime() + DAY);
+
+  // Both only ever show what's still ahead — never something that's already
+  // passed, even earlier the same day. "Tonight" additionally never reaches
+  // back before the evening boundary, even if asked for well before it.
+  if (filter === "today") {
+    return start >= now && start < todayEnd;
+  }
+  if (filter === "tonight") {
+    const eveningStart = new Date(todayStart.getTime() + EVENING_HOUR * 3600_000);
+    const from = eveningStart > now ? eveningStart : now;
+    return start >= from && start < todayEnd;
+  }
+
+  if (filter === "tomorrow") {
+    const to = new Date(todayEnd.getTime() + DAY);
+    return start >= todayEnd && start < to;
   }
 
   if (filter === "weekend") {
