@@ -57,9 +57,20 @@ const JEWISH_TEXT_RE =
   /\b(shabbat|shabbaton|kabbalat shabbat|kiddush|\btorah\b|\btanya\b|beit midrash|chavrusa|\bshiur\b|shiurim|yeshiva|synagogue|\bshul\b|davening|\bparsha\b|ushpizin|selichot|yom iyun|night seder|masorti community|conservative community)\b/i;
 const JEWISH_ORG_RE = /\b(chabad|synagogue|\bshul\b|yeshiva|beit midrash|kollel|pardes institute|aish|torah center|congregation)\b/i;
 
+/**
+ * "party"/"parties" alone is ambiguous in a way the rest of this list isn't —
+ * it's as likely to mean a caregiving visit ("Rosh HaShana Day Party" for
+ * isolated Holocaust survivors, run entirely by volunteers) as an actual
+ * night out. Evidenced by a real case: that exact event matched "party"
+ * three times in its description and picked up a "Nightlife" tag despite
+ * being a solemn volunteering event, correctly classified "jewish" on every
+ * other signal. Gated separately from the unambiguous phrases below, which
+ * don't have this problem.
+ */
+const GENERIC_PARTY_PHRASES = ["party", "parties"];
+const VOLUNTEER_RE = /\bvolunteer/i;
+
 const NIGHTLIFE_PHRASES = [
-  "party",
-  "parties",
   "club night",
   "dj set",
   "rave",
@@ -76,6 +87,12 @@ const NIGHTLIFE_PHRASES = [
   "pub crawl",
   "bar crawl",
 ];
+
+/** Nightlife language in `text` — the unambiguous phrases always count; a bare "party"/"parties" only counts outside a volunteering context. */
+function hasNightlifeSignal(text: string): boolean {
+  if (hasAny(text, NIGHTLIFE_PHRASES)) return true;
+  return hasAny(text, GENERIC_PARTY_PHRASES) && !VOLUNTEER_RE.test(text);
+}
 
 const CONCERT_PHRASES = [
   "concert",
@@ -160,7 +177,7 @@ function escapeRegExp(s: string): string {
  * to "nightlife". `\b` on both ends of the (possibly multi-word) phrase
  * fixes it without losing genuine matches like "farmers market".
  */
-function hasAny(text: string, phrases: string[]): boolean {
+export function hasAny(text: string, phrases: string[]): boolean {
   return phrases.some((p) => new RegExp(`\\b${escapeRegExp(p)}\\b`).test(text));
 }
 
@@ -181,7 +198,7 @@ export function classifySourceCategory(input: ClassificationInput): ActivityCate
   }
 
   if (JEWISH_TEXT_RE.test(text) || (input.host && JEWISH_ORG_RE.test(input.host))) return "jewish";
-  if (hasAny(text, NIGHTLIFE_PHRASES)) return "nightlife";
+  if (hasNightlifeSignal(text)) return "nightlife";
   if (hasAny(text, CONCERT_PHRASES) || CONCERT_LIVE_RE.test(text)) return "concerts";
   if (hasAny(text, FOOD_PHRASES)) return "food";
   if (hasAny(text, OUTDOORS_PHRASES)) return "outdoors";
@@ -272,7 +289,7 @@ export function deriveTags(input: ClassificationInput, category: ActivityCategor
   if (mirrored) tags.add(mirrored);
 
   // A cross-cutting "flavour" tag, not a restatement of a category the event is already primarily classified as.
-  if (category !== "nightlife" && hasAny(text, NIGHTLIFE_PHRASES)) tags.add("nightlife");
+  if (category !== "nightlife" && hasNightlifeSignal(text)) tags.add("nightlife");
   if (category !== "concerts" && (hasAny(text, CONCERT_PHRASES) || CONCERT_LIVE_RE.test(text))) tags.add("live_music");
 
   if (hasAny(text, BARS_PHRASES)) tags.add("bars");

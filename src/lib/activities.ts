@@ -167,6 +167,11 @@ const KIND_CATEGORY: Record<string, ActivityCategory> = {
   other: "attractions",
 };
 
+/** Structural guard: is this a real, known category value (not "all", not null/garbage)? */
+export function isActivityCategory(v: string | null | undefined): v is ActivityCategory {
+  return v !== null && v !== undefined && v !== "all" && (CATEGORY_ORDER as string[]).includes(v);
+}
+
 /** Which single chip an activity belongs under. */
 export function categoryOf(a: Pick<ActivityLike, "kind" | "sourceCategory" | "programmeStatus">): ActivityCategory {
   if (a.programmeStatus !== "independent") return "programme";

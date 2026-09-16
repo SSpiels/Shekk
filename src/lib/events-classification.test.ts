@@ -245,6 +245,39 @@ describe("classifySourceCategory — word-boundary matching (caught during this 
       }),
     ).not.toBe("concerts");
   });
+
+  it('a real Holocaust-survivor volunteering event is not nightlife, despite saying "party" three times', () => {
+    // Real case (NBN, "Adopt a Safta"): a volunteer escort/care event for
+    // isolated Holocaust survivors, described as a "Rosh HaShana Day Party"
+    // and "partying with Holocaust Survivors" — bare "party" is genuinely
+    // ambiguous (a gathering, not necessarily nightlife), and this is
+    // clearly jewish/volunteering, not a night out.
+    const input = {
+      title: "Volunteer @ Tel Aviv Holocaust Survivor Rosh HaShana Day Party, Sept 17",
+      description:
+        "Starting the New Year properly by partying with Holocaust Survivors. Tel Aviv Volunteers Needed at our Rosh HaShana Day Party. " +
+        "We are currently looking for Tel Aviv area volunteers who are interested in going to the homes of our seniors and escorting them " +
+        'to our Rosh party event. "Tzedakah and acts of kindness are the equivalent of all the Mitzvot of the Torah." – Jerusalem Talmud',
+      host: "Adopt a safta",
+    };
+    expect(classifySourceCategory(input)).toBe("jewish");
+    const { sourceCategory, tags } = classifyEvent(input);
+    expect(tags).not.toContain("nightlife");
+    expect(tags).toContain("volunteering");
+    expect(sourceCategory).toBe("jewish");
+  });
+
+  it('an unambiguous nightlife phrase still wins even alongside "volunteer" text', () => {
+    // The guard is scoped to the ambiguous bare "party"/"parties" only —
+    // genuine nightlife language (club night, DJ set, rave, ...) still
+    // classifies as nightlife regardless of nearby volunteering language.
+    expect(
+      classifySourceCategory({
+        title: "Volunteer Bartenders Wanted",
+        description: "Help us run the bar at tonight's club night — DJ set starts at 11pm.",
+      }),
+    ).toBe("nightlife");
+  });
 });
 
 describe("classifySourceCategory — unrelated categories are unaffected (no regressions)", () => {

@@ -98,6 +98,7 @@ import { Route as StaffSettingsRouteImport } from './routes/staff/settings'
 import { Route as StaffTeamRouteImport } from './routes/staff/team'
 import { Route as WhatsOnIndexRouteImport } from './routes/whats-on.index'
 import { Route as ApiAuthEmailWebhookRouteImport } from './routes/api/auth/email-webhook'
+import { Route as ApiCronSyncEventsRouteImport } from './routes/api/cron/sync-events'
 import { Route as ExploreEventIdRouteImport } from './routes/explore/event.$id'
 import { Route as ExploreFitnessIndexRouteImport } from './routes/explore/fitness.index'
 import { Route as ExploreFitnessIdRouteImport } from './routes/explore/fitness.$id'
@@ -561,6 +562,11 @@ const ApiAuthEmailWebhookRoute = ApiAuthEmailWebhookRouteImport.update({
   path: '/api/auth/email-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronSyncEventsRoute = ApiCronSyncEventsRouteImport.update({
+  id: '/api/cron/sync-events',
+  path: '/api/cron/sync-events',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ExploreEventIdRoute = ExploreEventIdRouteImport.update({
   id: '/explore/event/$id',
   path: '/explore/event/$id',
@@ -739,6 +745,7 @@ export interface FileRoutesByFullPath {
   '/staff/': typeof StaffIndexRoute
   '/whats-on/': typeof WhatsOnIndexRoute
   '/api/auth/email-webhook': typeof ApiAuthEmailWebhookRoute
+  '/api/cron/sync-events': typeof ApiCronSyncEventsRoute
   '/explore/event/$id': typeof ExploreEventIdRoute
   '/explore/fitness/$id': typeof ExploreFitnessIdRoute
   '/explore/fitness/discover': typeof ExploreFitnessDiscoverRoute
@@ -844,6 +851,7 @@ export interface FileRoutesByTo {
   '/staff': typeof StaffIndexRoute
   '/whats-on': typeof WhatsOnIndexRoute
   '/api/auth/email-webhook': typeof ApiAuthEmailWebhookRoute
+  '/api/cron/sync-events': typeof ApiCronSyncEventsRoute
   '/explore/event/$id': typeof ExploreEventIdRoute
   '/explore/fitness/$id': typeof ExploreFitnessIdRoute
   '/explore/fitness/discover': typeof ExploreFitnessDiscoverRoute
@@ -953,6 +961,7 @@ export interface FileRoutesById {
   '/staff/': typeof StaffIndexRoute
   '/whats-on/': typeof WhatsOnIndexRoute
   '/api/auth/email-webhook': typeof ApiAuthEmailWebhookRoute
+  '/api/cron/sync-events': typeof ApiCronSyncEventsRoute
   '/explore/event/$id': typeof ExploreEventIdRoute
   '/explore/fitness/$id': typeof ExploreFitnessIdRoute
   '/explore/fitness/discover': typeof ExploreFitnessDiscoverRoute
@@ -1063,6 +1072,7 @@ export interface FileRouteTypes {
     | '/staff/'
     | '/whats-on/'
     | '/api/auth/email-webhook'
+    | '/api/cron/sync-events'
     | '/explore/event/$id'
     | '/explore/fitness/$id'
     | '/explore/fitness/discover'
@@ -1168,6 +1178,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/whats-on'
     | '/api/auth/email-webhook'
+    | '/api/cron/sync-events'
     | '/explore/event/$id'
     | '/explore/fitness/$id'
     | '/explore/fitness/discover'
@@ -1276,6 +1287,7 @@ export interface FileRouteTypes {
     | '/staff/'
     | '/whats-on/'
     | '/api/auth/email-webhook'
+    | '/api/cron/sync-events'
     | '/explore/event/$id'
     | '/explore/fitness/$id'
     | '/explore/fitness/discover'
@@ -1361,6 +1373,7 @@ export interface RootRouteChildren {
   SocialIndexRoute: typeof SocialIndexRoute
   WhatsOnIndexRoute: typeof WhatsOnIndexRoute
   ApiAuthEmailWebhookRoute: typeof ApiAuthEmailWebhookRoute
+  ApiCronSyncEventsRoute: typeof ApiCronSyncEventsRoute
   ExploreEventIdRoute: typeof ExploreEventIdRoute
   ExploreFitnessIdRoute: typeof ExploreFitnessIdRoute
   ExploreFitnessDiscoverRoute: typeof ExploreFitnessDiscoverRoute
@@ -2003,6 +2016,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthEmailWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/sync-events': {
+      id: '/api/cron/sync-events'
+      path: '/api/cron/sync-events'
+      fullPath: '/api/cron/sync-events'
+      preLoaderRoute: typeof ApiCronSyncEventsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/explore/event/$id': {
       id: '/explore/event/$id'
       path: '/explore/event/$id'
@@ -2273,6 +2293,7 @@ const rootRouteChildren: RootRouteChildren = {
   SocialIndexRoute: SocialIndexRoute,
   WhatsOnIndexRoute: WhatsOnIndexRoute,
   ApiAuthEmailWebhookRoute: ApiAuthEmailWebhookRoute,
+  ApiCronSyncEventsRoute: ApiCronSyncEventsRoute,
   ExploreEventIdRoute: ExploreEventIdRoute,
   ExploreFitnessIdRoute: ExploreFitnessIdRoute,
   ExploreFitnessDiscoverRoute: ExploreFitnessDiscoverRoute,

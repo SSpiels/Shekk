@@ -19,6 +19,7 @@
 
 import type { EventKind } from "./events.server";
 import type { IntegrationType } from "./events.server";
+import type { AutoPublishSummary } from "./events-auto-publish.server";
 
 export type PartnerEvent = {
   ref: string;
@@ -90,7 +91,7 @@ export async function listPartnerEvents(provider: PartnerId): Promise<PartnerEve
 }
 
 /** Upsert a source's listings into the catalogue, keyed on provider_ref. */
-export async function syncPartnerEvents(provider: PartnerId): Promise<{ synced: number }> {
+export async function syncPartnerEvents(provider: PartnerId): Promise<{ synced: number; autoPublish?: AutoPublishSummary }> {
   const listings = await listPartnerEvents(provider);
   if (listings.length === 0) return { synced: 0 };
 
@@ -144,5 +145,18 @@ export async function syncPartnerEvents(provider: PartnerId): Promise<{ synced: 
     console.error(`[events] ${provider} dedupe pass:`, err instanceof Error ? err.message : err);
   }
 
-  return { synced: rows.length };
+  // Shadow-evaluates (and, only when explicitly enabled, applies) the
+  // auto-publish decision for this provider's draft backlog — see
+  // events-auto-publish.server.ts. Never blocks or fails the sync itself.
+  let autoPublish: AutoPublishSummary | undefined;
+  if (reviewRequired) {
+    try {
+      const { evaluateAutoPublish } = await import("./events-auto-publish.server");
+      autoPublish = await evaluateAutoPublish(provider);
+    } catch (err) {
+      console.error(`[events] ${provider} auto-publish pass:`, err instanceof Error ? err.message : err);
+    }
+  }
+
+  return { synced: rows.length, autoPublish };
 }
