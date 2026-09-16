@@ -1,13 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  israelLocalToIso,
-  parseClock,
-  parseWhen,
-  slugFromUrl,
-  splitTitleVenue,
-  guessSourceCategory,
-  guessKind,
-} from "./events-secret-tel-aviv.server";
+import { israelLocalToIso, parseClock, parseWhen, slugFromUrl, splitTitleVenue } from "./events-secret-tel-aviv.server";
 
 describe("secret tel aviv — israelLocalToIso", () => {
   it("converts a summer (DST, UTC+3) date/time correctly", () => {
@@ -79,34 +71,5 @@ describe("secret tel aviv — slugFromUrl", () => {
   });
 });
 
-describe("secret tel aviv — category/kind guesses are conservative", () => {
-  it("guesses nightlife/club for unambiguous party language", () => {
-    expect(guessSourceCategory("Rooftop DJ Party")).toBe("nightlife");
-    expect(guessKind("Rooftop DJ Party")).toBe("club");
-  });
-
-  it("falls back to attractions/other for unrecognised text", () => {
-    expect(guessSourceCategory("Solo Exhibition - Not by Bear Alone")).toBe("attractions");
-    expect(guessKind("Solo Exhibition - Not by Bear Alone")).toBe("other");
-  });
-
-  it("does not guess concerts from a bare, ambiguous 'festival'", () => {
-    // A culture/art festival is not necessarily a concert — only more specific
-    // music language should trigger "concerts".
-    expect(guessSourceCategory("Freedom to Create Festival - 70 Together")).toBe("attractions");
-    expect(guessSourceCategory("Live Music Festival")).toBe("concerts");
-  });
-
-  it("does not guess food from a bare, ambiguous 'market'", () => {
-    // A flea market isn't food; only a food-specific market phrase should count.
-    expect(guessSourceCategory("Jaffa Flea Market")).toBe("attractions");
-    expect(guessSourceCategory("Ze Mipo Farmers Market")).toBe("food");
-  });
-
-  it("does not guess sport from a bare, ambiguous 'run' (e.g. 'runs through Sunday')", () => {
-    expect(guessSourceCategory("Outback Garage Bike Fest, runs through Sunday")).toBe(
-      "attractions",
-    );
-    expect(guessSourceCategory("Fun Run for Charity")).toBe("sport");
-  });
-});
+// Category/kind classification now lives in `events-classification.ts`
+// (shared with every source adapter) — see events-classification.test.ts.

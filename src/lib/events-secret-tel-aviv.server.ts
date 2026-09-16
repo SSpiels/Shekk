@@ -17,8 +17,8 @@
  */
 
 import { parse } from "node-html-parser";
-import type { EventKind } from "./events.server";
 import type { PartnerEvent } from "./events-provider.server";
+import { classifyKind, classifySourceCategory } from "./events-classification";
 
 const LISTING_URL = "https://www.secrettelaviv.com/tickets";
 const SOURCE_HOST = "Secret Tel Aviv";
@@ -96,31 +96,6 @@ export function parseWhen(cellText: string): { startsAt: string; endsAt: string 
   };
 }
 
-/**
- * Deliberately narrow, high-precision phrases only — a single ambiguous word
- * (e.g. bare "market" or "run") produces confident-looking false positives
- * more often than it helps, so it's left out. Anything that doesn't clearly
- * match falls back to "attractions", which is already Shekk's own generic
- * default for unclassified activities (see `KIND_CATEGORY` in `activities.ts`)
- * — the safe choice, not a guess. This is intentionally simple keyword
- * matching, not a classifier: every import is reviewed as a draft anyway.
- */
-const NIGHTLIFE_RE = /\b(party|parties|club night|dj set|rave)\b/i;
-
-export function guessSourceCategory(text: string): string {
-  const t = text.toLowerCase();
-  if (NIGHTLIFE_RE.test(t)) return "nightlife";
-  if (/\b(concert|live music|gig|band performance)\b/.test(t)) return "concerts";
-  if (/\b(hike|hiking|nature walk|beach day)\b/.test(t)) return "outdoors";
-  if (/\b(farmers market|food market|food festival|tasting menu|culinary)\b/.test(t)) return "food";
-  if (/\b(yoga class|running club|fun run|marathon|cycling tour)\b/.test(t)) return "sport";
-  return "attractions";
-}
-
-export function guessKind(text: string): EventKind {
-  return NIGHTLIFE_RE.test(text) ? "club" : "other";
-}
-
 /** "Outback Garage Bike Fest @ Teder" -> { title: "Outback Garage Bike Fest", venue: "Teder" } */
 export function splitTitleVenue(raw: string): { title: string; venue: string | null } {
   const idx = raw.lastIndexOf(" @ ");
@@ -177,12 +152,12 @@ export async function listSecretTelAvivEvents(): Promise<PartnerEvent[]> {
       : null;
 
     const coverUrl = row.querySelector("td.event-image img")?.getAttribute("src") ?? null;
-    const categoryText = `${title} ${description ?? ""}`;
+    const sourceCategory = classifySourceCategory({ title, description, host: SOURCE_HOST });
 
     out.push({
       ref,
       title,
-      kind: guessKind(categoryText),
+      kind: classifyKind(sourceCategory, title, description),
       description,
       host: SOURCE_HOST,
       venue,
@@ -195,7 +170,7 @@ export async function listSecretTelAvivEvents(): Promise<PartnerEvent[]> {
       externalProviderId: ref,
       externalBookingUrl: href,
       integrationType: "affiliate_link",
-      sourceCategory: guessSourceCategory(categoryText),
+      sourceCategory,
     });
   }
 

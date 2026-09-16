@@ -1,12 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  decodeHtmlEntities,
-  extractCity,
-  guessKind,
-  isRelevantToShekk,
-  mapSourceCategory,
-  resolveOccurrence,
-} from "./events-nbn.server";
+import { decodeHtmlEntities, extractCity, isRelevantToShekk, resolveOccurrence } from "./events-nbn.server";
 
 describe("decodeHtmlEntities", () => {
   it("decodes the common entities seen in the real feed", () => {
@@ -39,48 +32,8 @@ describe("isRelevantToShekk", () => {
   });
 });
 
-describe("mapSourceCategory", () => {
-  it("maps NBN's own Shabbat/holiday categories to jewish", () => {
-    expect(mapSourceCategory(["Shabbat Meals &amp; Activities"], "Friday night dinner")).toBe("jewish");
-    expect(mapSourceCategory(["Chol HaMoed / Holidays"], "Sukkot event")).toBe("jewish");
-  });
-
-  it("catches nightlife/party language in the title even without a matching category", () => {
-    expect(mapSourceCategory(["Social", "Chol HaMoed / Holidays"], "Sukkot Singles Party")).toBe("nightlife");
-  });
-
-  it("maps Tiyulim/Tours to outdoors and Sport/Excercise to sport", () => {
-    expect(mapSourceCategory(["Tiyulim/Tours"], "Hiking trip")).toBe("outdoors");
-    expect(mapSourceCategory(["Sport/Excercise"], "Basketball league")).toBe("sport");
-  });
-
-  it("falls back to attractions for generic social/networking content", () => {
-    expect(mapSourceCategory(["Social", "Networking"], "Meet and Greet")).toBe("attractions");
-  });
-
-  it("never returns the programme category for an external import", () => {
-    expect(mapSourceCategory(["Young Professionals"], "anything")).not.toBe("programme");
-  });
-});
-
-describe("guessKind", () => {
-  it("labels an explicit Shabbat dinner a shabbaton", () => {
-    expect(guessKind("jewish", "Friday Night Shabbat Dinner")).toBe("shabbaton");
-  });
-
-  it("labels a Jewish learning session a shiur", () => {
-    expect(guessKind("jewish", "Tanya Class with Rabbi Eli")).toBe("shiur");
-  });
-
-  it("labels nightlife club and outdoors tiyul", () => {
-    expect(guessKind("nightlife", "Singles Party")).toBe("club");
-    expect(guessKind("outdoors", "Hiking trip")).toBe("tiyul");
-  });
-
-  it("labels volunteering chesed", () => {
-    expect(guessKind("attractions", "Volunteer at the farm")).toBe("chesed");
-  });
-});
+// Category/kind classification now lives in `events-classification.ts`
+// (shared with every source adapter) — see events-classification.test.ts.
 
 describe("extractCity", () => {
   it("prefers a recognised city category over the location text", () => {

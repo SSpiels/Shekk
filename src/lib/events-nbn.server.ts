@@ -25,8 +25,8 @@
  */
 
 import ical from "node-ical";
-import type { EventKind } from "./events.server";
 import type { PartnerEvent } from "./events-provider.server";
+import { classifyKind, classifySourceCategory } from "./events-classification";
 
 const FEED_URL = "https://www.nbn.org.il/?mec-ical-feed=1";
 const SOURCE_HOST = "Nefesh B'Nefesh";
@@ -62,53 +62,6 @@ export function isRelevantToShekk(categories: string[]): boolean {
   const norm = categories.map((c) => decodeHtmlEntities(c).toLowerCase().trim());
   if (norm.includes("young professionals")) return true;
   return !norm.some((c) => SENIOR_OR_FAMILY_ONLY.has(c));
-}
-
-// "Shabbat Meals & Activities" is an unambiguous Jewish/communal signal.
-// "Chol HaMoed / Holidays" and "Masorti/Conservative Community" are weaker —
-// a nightlife party can happen during a holiday period without itself being
-// a religious/communal event — so those only decide the category after the
-// nightlife/concert title checks below have had first pick.
-const STRONG_JEWISH_CATEGORIES = new Set(["shabbat meals & activities"]);
-const WEAK_JEWISH_CATEGORIES = new Set(["chol hamoed / holidays", "masorti/conservative community"]);
-const OUTDOORS_CATEGORIES = new Set(["tiyulim/tours"]);
-const SPORT_CATEGORIES = new Set(["sport/excercise"]);
-
-// Same "narrow phrases only" discipline as the Secret Tel Aviv adapter — a
-// bare word like "market" or "run" produces confident-looking wrong guesses.
-const NIGHTLIFE_RE = /\b(party|parties|singles party|singles night|club night|dj set|rave)\b/i;
-const CONCERT_RE = /\b(concert|live music|gig|band performance)\b/i;
-const FOOD_RE = /\b(farmers market|food market|food festival|tasting menu|culinary)\b/i;
-
-/**
- * NBN's own category tags are a much stronger signal than title keywords —
- * "Shabbat Meals & Activities" maps straight to Jewish/Shabbat. "My
- * Programme" never applies to an external import, so it's never a possible
- * result here. Falls back to "attractions" (Shekk's existing generic
- * default) when nothing more specific matches.
- */
-export function mapSourceCategory(categories: string[], text: string): string {
-  const norm = categories.map((c) => decodeHtmlEntities(c).toLowerCase().trim());
-  if (norm.some((c) => STRONG_JEWISH_CATEGORIES.has(c))) return "jewish";
-  if (NIGHTLIFE_RE.test(text)) return "nightlife";
-  if (CONCERT_RE.test(text)) return "concerts";
-  if (FOOD_RE.test(text)) return "food";
-  if (norm.some((c) => WEAK_JEWISH_CATEGORIES.has(c))) return "jewish";
-  if (norm.some((c) => OUTDOORS_CATEGORIES.has(c))) return "outdoors";
-  if (norm.some((c) => SPORT_CATEGORIES.has(c))) return "sport";
-  return "attractions";
-}
-
-export function guessKind(sourceCategory: string, text: string): EventKind {
-  if (sourceCategory === "nightlife") return "club";
-  if (sourceCategory === "outdoors") return "tiyul";
-  if (sourceCategory === "jewish") {
-    if (/\b(shabbat|shabbaton|friday night dinner)\b/i.test(text)) return "shabbaton";
-    if (/\b(class|shiur|torah|learning)\b/i.test(text)) return "shiur";
-    return "other";
-  }
-  if (/\bvolunteer/i.test(text)) return "chesed";
-  return "other";
 }
 
 /** Category values in the feed that are genuine Israeli cities/city-groups, not demographics or venues. */
@@ -254,16 +207,21 @@ export async function listNbnEvents(): Promise<PartnerEvent[]> {
 
     const title = decodeHtmlEntities(e.summary.trim());
     const description = e.description ? decodeHtmlEntities(e.description.trim()) || null : null;
-    const combinedText = `${title} ${description ?? ""}`;
-    const sourceCategory = mapSourceCategory(categories, combinedText);
     const organiser = organizerName(e.organizer);
+    const host = organiser ?? SOURCE_HOST;
+    const sourceCategory = classifySourceCategory({
+      title,
+      description,
+      host,
+      sourceCategoryTags: categories.map((c) => decodeHtmlEntities(c)),
+    });
 
     out.push({
       ref: e.uid,
       title,
-      kind: guessKind(sourceCategory, combinedText),
+      kind: classifyKind(sourceCategory, title, description),
       description,
-      host: organiser ?? SOURCE_HOST,
+      host,
       venue: e.location ? decodeHtmlEntities(e.location.trim()) || null : null,
       city: extractCity(categories, e.location ?? null),
       startsAt: occurrence.startsAt,

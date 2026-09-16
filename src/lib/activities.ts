@@ -24,7 +24,11 @@ export type ActivityCategory =
   | "attractions"
   | "food"
   | "jewish"
-  | "programme";
+  | "programme"
+  /** Classes, seminars, talks, skill-building — a real, evidenced cluster previously dumped into "attractions". */
+  | "workshops"
+  /** Movement/mindfulness/body-based wellness (Feldenkrais, sound meditation) — distinct from competitive/fitness "sport". */
+  | "wellness";
 
 export const CATEGORY_LABEL: Record<ActivityCategory, string> = {
   all: "All",
@@ -36,6 +40,8 @@ export const CATEGORY_LABEL: Record<ActivityCategory, string> = {
   food: "Food & workshops",
   jewish: "Jewish life",
   programme: "Programme",
+  workshops: "Workshops & talks",
+  wellness: "Wellness",
 };
 
 export const CATEGORY_ORDER: ActivityCategory[] = [
@@ -48,6 +54,8 @@ export const CATEGORY_ORDER: ActivityCategory[] = [
   "food",
   "jewish",
   "programme",
+  "workshops",
+  "wellness",
 ];
 
 export type DateFilter = "any" | "today" | "tonight" | "tomorrow" | "weekend" | "date";
@@ -124,7 +132,7 @@ export const DISCOVERY_ORDER: DiscoveryCategory[] = [
 const DISCOVERY_GROUPS: Record<Exclude<DiscoveryCategory, "all">, ActivityCategory[]> = {
   nightlife: ["nightlife"],
   concerts: ["concerts"],
-  activities: ["sport", "outdoors", "attractions", "food"],
+  activities: ["sport", "outdoors", "attractions", "food", "workshops", "wellness"],
   jewish: ["jewish"],
   programme: ["programme"],
 };
@@ -259,9 +267,16 @@ export function bookingCta(mode: BookingMode, provider: string): string {
   }
 }
 
+/** Provider ids that aren't just an underscore-joined name — generic title-casing gets these wrong. */
+const PROVIDER_DISPLAY_NAMES: Record<string, string> = {
+  nbn: "Nefesh B'Nefesh",
+};
+
 export function providerLabel(provider: string): string {
   const p = (provider ?? "").trim();
   if (!p || p === "shekk") return "the provider";
+  const known = PROVIDER_DISPLAY_NAMES[p.toLowerCase()];
+  if (known) return known;
   return p
     .split(/[_\s]+/)
     .filter(Boolean)
