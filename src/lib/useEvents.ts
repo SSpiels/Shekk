@@ -176,11 +176,13 @@ export function useSetEventStatus() {
   });
 }
 
+export type EventSourceId = "eventer" | "tickchak" | "secret_tel_aviv";
+
 export function useSyncPartner() {
   const fn = useServerFn(adminSyncPartner);
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (provider: "eventer" | "tickchak") => fn({ data: { provider } }),
+    mutationFn: (provider: EventSourceId) => fn({ data: { provider } }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "events"] }),
   });
 }

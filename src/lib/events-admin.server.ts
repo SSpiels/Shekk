@@ -24,7 +24,8 @@ export type AdminEvent = {
   city: string | null;
   startsAt: string;
   endsAt: string | null;
-  price: number;
+  /** null = genuinely unknown (an imported listing that didn't state one), never "free". */
+  price: number | null;
   capacity: number;
   perPersonLimit: number;
   coverUrl: string | null;
@@ -109,7 +110,7 @@ export async function listAllEvents(): Promise<AdminEvent[]> {
     city: r.city,
     startsAt: r.starts_at,
     endsAt: r.ends_at,
-    price: r.price_agorot / 100,
+    price: r.price_agorot === null ? null : r.price_agorot / 100,
     capacity: r.capacity,
     perPersonLimit: r.per_person_limit,
     coverUrl: r.cover_url,

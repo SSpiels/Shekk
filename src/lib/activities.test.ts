@@ -120,6 +120,13 @@ describe("bookingMode", () => {
     expect(bookingMode({ ...base, remaining: 0 }, { moneyEnabled: true })).toBe("sold_out");
   });
 
+  it("never treats an unknown price as a free or payable internal ticket", () => {
+    expect(bookingMode({ ...base, price: null }, { moneyEnabled: true })).toBe("unavailable");
+    expect(
+      bookingMode({ ...base, price: null, externalBookingUrl: "https://p.example/x" }, { moneyEnabled: true }),
+    ).toBe("external");
+  });
+
   it("names the provider in the CTA and never mentions the Shekk balance", () => {
     const cta = bookingCta("external", "getyourguide");
     expect(cta).toBe("Book securely with Getyourguide");

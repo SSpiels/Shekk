@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { Pill, PageTitle, Panel, Stat } from "@/components/admin/AdminUI";
 import { ils, when } from "@/lib/admin-data";
+import { providerLabel } from "@/lib/activities";
 import {
   EVENT_KIND_LABEL,
   useAdminEventTickets,
@@ -10,6 +11,7 @@ import {
   useSetEventStatus,
   useSyncPartner,
   type EventDraft,
+  type EventSourceId,
 } from "@/lib/useEvents";
 
 export const Route = createFileRoute("/admin/events")({
@@ -17,6 +19,12 @@ export const Route = createFileRoute("/admin/events")({
 });
 
 const KINDS: EventDraft["kind"][] = ["shabbaton", "tiyul", "club", "shiur", "chesed", "other"];
+
+const SOURCES: { id: EventSourceId; label: string }[] = [
+  { id: "secret_tel_aviv", label: "Secret Tel Aviv (scraped, lands as draft)" },
+  { id: "eventer", label: "Eventer (partner API)" },
+  { id: "tickchak", label: "Tickchak (partner API)" },
+];
 
 function localInput(iso: string) {
   const d = new Date(iso);
@@ -46,6 +54,7 @@ function EventsAdmin() {
   const { data: events = [], isLoading, error } = useAdminEvents(true);
   const [editing, setEditing] = useState<{ id: string | null; draft: EventDraft } | null>(null);
   const [holders, setHolders] = useState<string | null>(null);
+  const [source, setSource] = useState<EventSourceId>("secret_tel_aviv");
 
   const save = useSaveEvent();
   const setStatus = useSetEventStatus();
@@ -75,13 +84,27 @@ function EventsAdmin() {
         title="Catalogue"
         action={
           <div className="flex items-center gap-2">
+            <select
+              value={source}
+              onChange={(e) => {
+                setSource(e.target.value as EventSourceId);
+                sync.reset();
+              }}
+              className="rounded-xl border border-border bg-background px-2 py-2 text-xs font-semibold"
+            >
+              {SOURCES.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
-              onClick={() => sync.mutate("eventer")}
+              onClick={() => sync.mutate(source)}
               disabled={sync.isPending}
               className="rounded-xl border border-border px-3 py-2 text-xs font-semibold disabled:opacity-40"
             >
-              {sync.isPending ? "Syncing…" : "Sync partner feed"}
+              {sync.isPending ? "Syncing…" : "Sync source"}
             </button>
             <button
               type="button"
@@ -95,12 +118,15 @@ function EventsAdmin() {
       >
         {sync.data && !sync.data.configured ? (
           <p className="mb-3 rounded-xl bg-muted p-3 text-xs text-muted-foreground">
-            No ticketing partner is connected yet. Once a partner agreement and API key are in place, their
+            That source isn&apos;t connected yet. Once a partner agreement and API key are in place, their
             listings sync in here automatically alongside the ones you create.
           </p>
         ) : null}
         {sync.data?.configured ? (
-          <p className="mb-3 text-xs text-muted-foreground">Synced {sync.data.synced} partner listings.</p>
+          <p className="mb-3 text-xs text-muted-foreground">
+            Synced {sync.data.synced} listing{sync.data.synced === 1 ? "" : "s"} from {source}
+            {source === "secret_tel_aviv" ? " — new ones land as Draft below. Review and Publish each one." : ""}
+          </p>
         ) : null}
 
         {isLoading ? (
@@ -137,13 +163,15 @@ function EventsAdmin() {
                           <p className="truncate text-xs text-muted-foreground">
                             {EVENT_KIND_LABEL[e.kind]} · {e.host}
                             {e.city ? ` · ${e.city}` : ""}
-                            {e.provider !== "shekk" ? ` · via ${e.provider}` : ""}
+                            {e.provider !== "shekk" ? ` · via ${providerLabel(e.provider)}` : ""}
                           </p>
                         </div>
                       </div>
                     </td>
                     <td className="py-3 pr-3 whitespace-nowrap text-xs">{when(e.startsAt)}</td>
-                    <td className="py-3 pr-3 whitespace-nowrap">{e.price === 0 ? "Free" : ils(e.price)}</td>
+                    <td className="py-3 pr-3 whitespace-nowrap">
+                      {e.price === null ? "Unknown" : e.price === 0 ? "Free" : ils(e.price)}
+                    </td>
                     <td className="py-3 pr-3 whitespace-nowrap">
                       {e.sold}
                       {e.capacity > 0 ? ` / ${e.capacity}` : ""}
@@ -183,7 +211,7 @@ function EventsAdmin() {
                                   city: e.city ?? "",
                                   startsAt: localInput(e.startsAt),
                                   endsAt: e.endsAt ? localInput(e.endsAt) : "",
-                                  price: e.price,
+                                  price: e.price ?? 0, // Shekk-created events always have a real price
                                   capacity: e.capacity,
                                   perPersonLimit: e.perPersonLimit,
                                   coverUrl: e.coverUrl ?? "",

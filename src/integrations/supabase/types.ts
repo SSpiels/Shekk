@@ -363,7 +363,7 @@ export type Database = {
           kind: string
           last_verified_at: string | null
           per_person_limit: number
-          price_agorot: number
+          price_agorot: number | null
           programme_status: string
           provider: string
           provider_ref: string | null
@@ -399,7 +399,7 @@ export type Database = {
           kind?: string
           last_verified_at?: string | null
           per_person_limit?: number
-          price_agorot?: number
+          price_agorot?: number | null
           programme_status?: string
           provider?: string
           provider_ref?: string | null
@@ -435,7 +435,7 @@ export type Database = {
           kind?: string
           last_verified_at?: string | null
           per_person_limit?: number
-          price_agorot?: number
+          price_agorot?: number | null
           programme_status?: string
           provider?: string
           provider_ref?: string | null

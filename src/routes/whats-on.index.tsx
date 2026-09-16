@@ -265,7 +265,9 @@ function ActivityCard({ activity: a }: { activity: Activity }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-2">
             <p className="min-w-0 flex-1 text-sm font-semibold leading-snug">{a.title}</p>
-            <span className="shrink-0 text-sm font-bold">{a.price === 0 ? "Free" : ils(a.price)}</span>
+            <span className="shrink-0 text-sm font-bold">
+              {a.price === null ? "See price" : a.price === 0 ? "Free" : ils(a.price)}
+            </span>
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">{eventWhen(a.startsAt)}</p>
           <p className="truncate text-xs text-muted-foreground">

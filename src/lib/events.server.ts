@@ -28,7 +28,8 @@ export type EventRow = {
   city: string | null;
   starts_at: string;
   ends_at: string | null;
-  price_agorot: number;
+  /** NULL means the price is genuinely unknown — never render or treat that as free. */
+  price_agorot: number | null;
   capacity: number;
   per_person_limit: number;
   cover_url: string | null;
@@ -66,7 +67,8 @@ export type PublicEvent = {
   city: string | null;
   startsAt: string;
   endsAt: string | null;
-  price: number;
+  /** null = genuinely unknown, never "free". Only 0 means free. */
+  price: number | null;
   capacity: number;
   sold: number;
   remaining: number | null;
@@ -163,7 +165,7 @@ function shape(row: EventRow, sold: number): PublicEvent {
     city: row.city,
     startsAt: row.starts_at,
     endsAt: row.ends_at,
-    price: toShekels(row.price_agorot),
+    price: row.price_agorot === null ? null : toShekels(row.price_agorot),
     capacity: row.capacity,
     sold,
     remaining: row.capacity > 0 ? Math.max(0, row.capacity - sold) : null,

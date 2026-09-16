@@ -89,7 +89,7 @@ function ActivityDetail() {
   const programme = activity.programmeStatus !== "independent";
   const leftForMe = Math.max(0, activity.perPersonLimit - mine);
   const maxQty = Math.max(1, Math.min(leftForMe, activity.remaining ?? activity.perPersonLimit));
-  const total = +(activity.price * qty).toFixed(2);
+  const total = activity.price === null ? 0 : +(activity.price * qty).toFixed(2);
   const shortBy = +(total - available).toFixed(2);
 
   /* A real clash, computed from the member's own programme schedule — never a guess. */
@@ -209,7 +209,11 @@ function ActivityDetail() {
             ) : null}
             <p className="flex items-center gap-2">
               <Ticket className="size-4 shrink-0 text-muted-foreground" />
-              {activity.price === 0 ? "Free" : `${ils(activity.price)} per person`}
+              {activity.price === null
+                ? `See price on ${providerLabel(activity.provider)}`
+                : activity.price === 0
+                  ? "Free"
+                  : `${ils(activity.price)} per person`}
               {activity.remaining !== null ? ` · ${activity.remaining} of ${activity.capacity} left` : ""}
             </p>
             {activity.ageMin ? (

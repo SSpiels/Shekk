@@ -55,7 +55,8 @@ export type DateFilter = "any" | "today" | "tonight" | "weekend" | "date";
 /** The minimum shape both the list and the detail screen work with. */
 export type ActivityLike = {
   kind: string;
-  price: number;
+  /** null = genuinely unknown (an imported listing that didn't state one) — never treat this as free. Only 0 is free. */
+  price: number | null;
   remaining: number | null;
   integrationType: IntegrationType;
   externalBookingUrl: string | null;
@@ -163,7 +164,10 @@ export function bookingMode(
   const moneyEnabled = opts.moneyEnabled ?? MONEY_ENABLED;
   if (a.remaining !== null && a.remaining <= 0) return "sold_out";
 
-  if (a.integrationType === "internal_ticket") {
+  // An unknown price is never bookable as an internal ticket — there's nothing
+  // to charge. The DB itself prevents this combination for real rows; this is
+  // just defence in depth.
+  if (a.integrationType === "internal_ticket" && a.price !== null) {
     if (a.price === 0) return "internal_ticket";
     if (moneyEnabled) return "internal_ticket";
     return a.externalBookingUrl ? "external" : "unavailable";
@@ -189,7 +193,11 @@ export function bookingCta(mode: BookingMode, provider: string): string {
 export function providerLabel(provider: string): string {
   const p = (provider ?? "").trim();
   if (!p || p === "shekk") return "the provider";
-  return p.charAt(0).toUpperCase() + p.slice(1);
+  return p
+    .split(/[_\s]+/)
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 }
 
 /* ------------------------------------------------------------------- grouping --- */
