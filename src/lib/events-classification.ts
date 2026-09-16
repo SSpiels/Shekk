@@ -35,7 +35,7 @@
  * the same discipline applied per-source before this module existed.
  */
 
-import type { ActivityCategory } from "./activities";
+import type { ActivityCategory, EventSubcategory, EventTag } from "./activities";
 import type { EventKind } from "./events.server";
 
 export type ClassificationInput = {
@@ -204,4 +204,99 @@ export function classifyKind(category: ActivityCategory, title: string, descript
   }
   if (/\bvolunteer/.test(text)) return "chesed";
   return "other";
+}
+
+/* ------------------------------------------------------ subcategory & tags --- */
+
+/**
+ * Each subcategory carries a fixed "starter" tag bundle (matching what a
+ * human would obviously tag it with); independently-detected tags layer on
+ * top of that, never replace it. `EventSubcategory` itself lives in
+ * `lib/activities.ts` — the browser-safe vocabulary module — alongside
+ * `EventTag`, so client UI code (e.g. the Filters panel) can use both
+ * without importing this classifier.
+ */
+const SUBCATEGORY_STARTER_TAGS: Record<EventSubcategory, EventTag[]> = {
+  pub_crawl: ["bars", "social", "group_activity"],
+  friday_night_dinner: ["food", "community"],
+  holiday_event: [],
+};
+
+const HOLIDAY_NAME_RE = /\b(sukkot|sukkah|yom kippur|rosh hashana|chanukah|hanukkah|purim|pesach|passover|shavuot|simchat torah)\b/i;
+const FRIDAY_NIGHT_DINNER_RE = /\b(shabbat dinner|friday night dinner|kabbalat shabbat)\b/i;
+
+/**
+ * Deliberately conservative: only fires for the exact patterns above, and
+ * only ever within the category that already makes sense for it (a pub
+ * crawl has to already be classified nightlife; a Friday night dinner has
+ * to already be classified jewish). Everything else gets no subcategory —
+ * "optional" is the point, not every event needs one.
+ */
+export function classifySubcategory(category: ActivityCategory, text: string): EventSubcategory | null {
+  if (category === "nightlife" && (text.includes("pub crawl") || text.includes("bar crawl"))) return "pub_crawl";
+  if (category === "jewish") {
+    if (FRIDAY_NIGHT_DINNER_RE.test(text)) return "friday_night_dinner";
+    if (HOLIDAY_NAME_RE.test(text)) return "holiday_event";
+  }
+  return null;
+}
+
+const BARS_PHRASES = ["pub crawl", "bar crawl", "open bar", "cocktail bar", "bars/clubs", "bartender"];
+const COCKTAILS_PHRASES = ["cocktail", "cocktails", "mixology"];
+const DJ_PHRASES = ["dj set", "dj night", "vinyl set", "spinning tunes"];
+const COMEDY_PHRASES = ["comedy show", "comedy night", "stand-up", "standup", "stand up comedy", "comedian"];
+const SOCIAL_PHRASES = ["mingle", "meet new people", "singles night", "singles party", "networking event", "meet and greet", "meet & greet"];
+const YOUNG_PROFESSIONALS_PHRASES = ["young professionals", "in their 20s", "20s and 30s", "20s & 30s", "young adults"];
+const MARKET_PHRASES = ["farmers market", "flea market", "food market", "street market"];
+
+/** The category values that, when they ARE the classified category, double directly as a tag too — one signal, no separate detector needed. */
+const CATEGORY_MIRROR_TAGS: Partial<Record<ActivityCategory, EventTag>> = {
+  sport: "sport",
+  outdoors: "outdoors",
+  workshops: "workshops",
+  wellness: "wellness",
+  food: "food",
+};
+
+/**
+ * Every tag derives from the same signals `classifySourceCategory` already
+ * has — title, description, organiser, a source's own category tags — never
+ * a new, separate guess. Multiple tags are expected; this is additive, not
+ * a single choice like the category/subcategory above.
+ */
+export function deriveTags(input: ClassificationInput, category: ActivityCategory, subcategory: EventSubcategory | null): EventTag[] {
+  const text = `${input.title} ${input.description ?? ""}`.toLowerCase();
+  const tags = new Set<EventTag>(subcategory ? SUBCATEGORY_STARTER_TAGS[subcategory] : []);
+
+  const mirrored = CATEGORY_MIRROR_TAGS[category];
+  if (mirrored) tags.add(mirrored);
+
+  // A cross-cutting "flavour" tag, not a restatement of a category the event is already primarily classified as.
+  if (category !== "nightlife" && hasAny(text, NIGHTLIFE_PHRASES)) tags.add("nightlife");
+  if (category !== "concerts" && (hasAny(text, CONCERT_PHRASES) || CONCERT_LIVE_RE.test(text))) tags.add("live_music");
+
+  if (hasAny(text, BARS_PHRASES)) tags.add("bars");
+  if (hasAny(text, COCKTAILS_PHRASES)) tags.add("cocktails");
+  if (hasAny(text, DJ_PHRASES)) tags.add("dj_set");
+  if (hasAny(text, COMEDY_PHRASES)) tags.add("comedy");
+  if (hasAny(text, SOCIAL_PHRASES)) tags.add("social");
+  if (hasAny(text, YOUNG_PROFESSIONALS_PHRASES)) tags.add("young_professionals");
+  if (hasAny(text, MARKET_PHRASES)) tags.add("markets");
+  if (/\bcommunity\b/.test(text)) tags.add("community");
+  if (/\bvolunteer/.test(text)) tags.add("volunteering");
+
+  return [...tags];
+}
+
+/** Runs the full classification pass — category, subcategory, tags — in the right order for a new import. */
+export function classifyEvent(input: ClassificationInput): {
+  sourceCategory: ActivityCategory;
+  subcategory: EventSubcategory | null;
+  tags: EventTag[];
+} {
+  const text = `${input.title} ${input.description ?? ""}`.toLowerCase();
+  const sourceCategory = classifySourceCategory(input);
+  const subcategory = classifySubcategory(sourceCategory, text);
+  const tags = deriveTags(input, sourceCategory, subcategory);
+  return { sourceCategory, subcategory, tags };
 }

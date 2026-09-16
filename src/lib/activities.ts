@@ -73,7 +73,87 @@ export type ActivityLike = {
   externalBookingUrl: string | null;
   programmeStatus: ProgrammeStatus;
   sourceCategory: string | null;
+  subcategory: string | null;
+  tags: string[];
   startsAt: string;
+};
+
+export type PriceFilter = "free" | "paid" | "unknown";
+
+export function matchesPrice(a: Pick<ActivityLike, "price">, filter: PriceFilter): boolean {
+  if (filter === "free") return a.price === 0;
+  if (filter === "unknown") return a.price === null;
+  return a.price !== null && a.price > 0;
+}
+
+export function matchesTag(a: Pick<ActivityLike, "tags">, tag: string): boolean {
+  return a.tags.includes(tag);
+}
+
+export function matchesSubcategory(a: Pick<ActivityLike, "subcategory">, subcategory: string): boolean {
+  return a.subcategory === subcategory;
+}
+
+/**
+ * A small, optional, finer layer under the primary category — see
+ * `lib/events-classification.ts` for how it's derived. Lives here (not in
+ * the classifier module) so both the classifier and browser-safe UI code
+ * such as the Filters panel can use it without a server import.
+ */
+export type EventSubcategory = "pub_crawl" | "friday_night_dinner" | "holiday_event";
+
+export const SUBCATEGORY_LABEL: Record<EventSubcategory, string> = {
+  pub_crawl: "Pub crawl",
+  friday_night_dinner: "Friday night dinner",
+  holiday_event: "Holiday event",
+};
+
+/**
+ * Controlled tag vocabulary — every value is evidenced by a real cluster in
+ * the published dataset (see the classification audit in
+ * `lib/events-classification.ts`), not invented. "nightlife" as a *tag* is a
+ * distinct concept from the nightlife *primary category*: it flags
+ * nightlife-flavoured content on an event whose primary is something else
+ * (e.g. a Sukkot party held at a synagogue is primary "jewish" but still
+ * genuinely has a nightlife flavour worth surfacing in Filters).
+ */
+export type EventTag =
+  | "nightlife"
+  | "bars"
+  | "cocktails"
+  | "dj_set"
+  | "live_music"
+  | "comedy"
+  | "food"
+  | "social"
+  | "group_activity"
+  | "young_professionals"
+  | "community"
+  | "sport"
+  | "outdoors"
+  | "workshops"
+  | "wellness"
+  | "volunteering"
+  | "markets";
+
+export const TAG_LABEL: Record<EventTag, string> = {
+  nightlife: "Nightlife",
+  bars: "Bars",
+  cocktails: "Cocktails",
+  dj_set: "DJ set",
+  live_music: "Live music",
+  comedy: "Comedy",
+  food: "Food",
+  social: "Social",
+  group_activity: "Group activity",
+  young_professionals: "Young Professionals",
+  community: "Community",
+  sport: "Sport",
+  outdoors: "Outdoors",
+  workshops: "Workshops",
+  wellness: "Wellness",
+  volunteering: "Volunteering",
+  markets: "Markets",
 };
 
 /* ------------------------------------------------------------------ category --- */

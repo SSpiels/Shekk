@@ -26,7 +26,7 @@
 
 import ical from "node-ical";
 import type { PartnerEvent } from "./events-provider.server";
-import { classifyKind, classifySourceCategory } from "./events-classification";
+import { classifyEvent, classifyKind } from "./events-classification";
 
 const FEED_URL = "https://www.nbn.org.il/?mec-ical-feed=1";
 const SOURCE_HOST = "Nefesh B'Nefesh";
@@ -209,7 +209,7 @@ export async function listNbnEvents(): Promise<PartnerEvent[]> {
     const description = e.description ? decodeHtmlEntities(e.description.trim()) || null : null;
     const organiser = organizerName(e.organizer);
     const host = organiser ?? SOURCE_HOST;
-    const sourceCategory = classifySourceCategory({
+    const { sourceCategory, subcategory, tags } = classifyEvent({
       title,
       description,
       host,
@@ -233,6 +233,8 @@ export async function listNbnEvents(): Promise<PartnerEvent[]> {
       externalBookingUrl: e.url ?? null,
       integrationType: "affiliate_link",
       sourceCategory,
+      subcategory,
+      tags,
     });
   }
 

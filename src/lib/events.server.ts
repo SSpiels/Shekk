@@ -47,6 +47,10 @@ export type EventRow = {
   commission_type: string | null;
   commission_rate: number | null;
   source_category: string | null;
+  /** A finer, optional classification under source_category — most rows have none. */
+  subcategory: string | null;
+  /** Controlled multi-value tags — see lib/events-classification.ts. */
+  tags: string[];
   programme_status: ProgrammeStatus;
   last_verified_at: string | null;
   availability_confidence: "live" | "recent" | "unknown" | null;
@@ -81,6 +85,8 @@ export type PublicEvent = {
   externalBookingUrl: string | null;
   integrationType: IntegrationType;
   sourceCategory: string | null;
+  subcategory: string | null;
+  tags: string[];
   programmeStatus: ProgrammeStatus;
   lastVerifiedAt: string | null;
   availabilityConfidence: "live" | "recent" | "unknown" | null;
@@ -177,6 +183,8 @@ function shape(row: EventRow, sold: number): PublicEvent {
     externalBookingUrl: row.external_booking_url ?? null,
     integrationType: (row.integration_type ?? "internal_ticket") as IntegrationType,
     sourceCategory: row.source_category ?? null,
+    subcategory: row.subcategory ?? null,
+    tags: row.tags ?? [],
     programmeStatus: (row.programme_status ?? "independent") as ProgrammeStatus,
     lastVerifiedAt: row.last_verified_at ?? null,
     availabilityConfidence: row.availability_confidence ?? null,

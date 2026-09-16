@@ -9,14 +9,20 @@ import {
   DISCOVERY_LABEL,
   DISCOVERY_ORDER,
   EVENING_HOUR,
+  SUBCATEGORY_LABEL,
+  TAG_LABEL,
   categoryOf,
   discoveryOf,
   groupByDay,
   matchesDate,
   matchesDiscovery,
+  matchesPrice,
+  matchesSubcategory,
+  matchesTag,
   providerLabel,
   type DiscoveryCategory,
   type DateFilter,
+  type PriceFilter,
 } from "@/lib/activities";
 import { track } from "@/lib/analytics";
 
@@ -46,6 +52,12 @@ function isEveningNow(now: Date): boolean {
   return now.getHours() >= EVENING_HOUR;
 }
 
+/** Prioritised over every other location — see Filters spec: TLV/Jerusalem first, everything else under "Other". */
+const TEL_AVIV = "Tel Aviv";
+const JERUSALEM = "Jerusalem";
+
+type MoreOption = { id: string; label: string; kind: "tag" | "subcategory" };
+
 function WhatsOnScreen() {
   const { data, isLoading, error, refetch } = useEvents();
   const { data: tickets } = useMyTickets();
@@ -54,28 +66,70 @@ function WhatsOnScreen() {
   const [pickedDate, setPickedDate] = useState<string>("");
   const [category, setCategory] = useState<DiscoveryCategory>("all");
   const [city, setCity] = useState<string | null>(null);
-  const [freeOnly, setFreeOnly] = useState(false);
+  const [otherCitiesOpen, setOtherCitiesOpen] = useState(false);
+  const [priceFilter, setPriceFilter] = useState<PriceFilter | null>(null);
+  const [more, setMore] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const activities = data ?? [];
 
-  const cities = useMemo(
-    () => [...new Set(activities.map((a) => a.city).filter((c): c is string => Boolean(c)))].sort(),
+  const otherCities = useMemo(
+    () =>
+      [...new Set(activities.map((a) => a.city).filter((c): c is string => Boolean(c) && c !== TEL_AVIV && c !== JERUSALEM))].sort(),
     [activities],
   );
+  const hasTlv = useMemo(() => activities.some((a) => a.city === TEL_AVIV), [activities]);
+  const hasJerusalem = useMemo(() => activities.some((a) => a.city === JERUSALEM), [activities]);
+
+  const priceBuckets = useMemo(
+    () => ({
+      free: activities.some((a) => a.price === 0),
+      paid: activities.some((a) => a.price !== null && a.price > 0),
+      unknown: activities.some((a) => a.price === null),
+    }),
+    [activities],
+  );
+
+  /**
+   * Only surfaces tags/subcategories that actually occur in the current
+   * dataset — an empty option would be a dead end. The "nightlife" tag is
+   * deliberately excluded here even though it's a real, derived value: its
+   * label would duplicate the primary "Nightlife" WHAT chip already shown
+   * above the Filters panel.
+   */
+  const moreOptions = useMemo<MoreOption[]>(() => {
+    const counts = new Map<string, number>();
+    for (const a of activities) {
+      for (const tag of a.tags) if (tag !== "nightlife") counts.set(`tag:${tag}`, (counts.get(`tag:${tag}`) ?? 0) + 1);
+      if (a.subcategory) counts.set(`sub:${a.subcategory}`, (counts.get(`sub:${a.subcategory}`) ?? 0) + 1);
+    }
+    const opts: (MoreOption & { count: number })[] = [];
+    for (const [key, count] of counts) {
+      const [kind, id] = key.split(":") as ["tag" | "subcategory", string];
+      const label =
+        kind === "tag"
+          ? (TAG_LABEL as Record<string, string>)[id]
+          : (SUBCATEGORY_LABEL as Record<string, string>)[id];
+      if (label) opts.push({ id, label, kind: kind === "tag" ? "tag" : "subcategory", count });
+    }
+    opts.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+    return opts;
+  }, [activities]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     const effectiveDate: DateFilter = pickedDate ? "date" : dateFilter;
+    const moreOpt = more ? moreOptions.find((o) => o.id === more) : null;
     return activities.filter((a) => {
       if (!matchesDate(a.startsAt, effectiveDate, { pickedDate: pickedDate || null })) return false;
       if (!matchesDiscovery(a, category)) return false;
       if (city && a.city !== city) return false;
-      if (freeOnly && a.price !== 0) return false;
+      if (priceFilter && !matchesPrice(a, priceFilter)) return false;
+      if (moreOpt && !(moreOpt.kind === "tag" ? matchesTag(a, moreOpt.id) : matchesSubcategory(a, moreOpt.id))) return false;
       if (q && ![a.title, a.host, a.venue ?? "", a.city ?? ""].join(" ").toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [activities, query, dateFilter, pickedDate, category, city, freeOnly]);
+  }, [activities, query, dateFilter, pickedDate, category, city, priceFilter, more, moreOptions]);
 
   const groups = useMemo(() => groupByDay(shown), [shown]);
 
@@ -83,7 +137,7 @@ function WhatsOnScreen() {
     if (shown.length > 0) track("activity_impression", { count: shown.length, category, date: dateFilter });
   }, [shown.length, category, dateFilter]);
 
-  const secondaryFilterCount = (city ? 1 : 0) + (freeOnly ? 1 : 0);
+  const secondaryFilterCount = (city ? 1 : 0) + (priceFilter ? 1 : 0) + (more ? 1 : 0);
   const filtering = Boolean(query.trim()) || dateFilter !== "any" || Boolean(pickedDate) || category !== "all" || secondaryFilterCount > 0;
 
   const clearFilters = () => {
@@ -92,13 +146,19 @@ function WhatsOnScreen() {
     setPickedDate("");
     setCategory("all");
     setCity(null);
-    setFreeOnly(false);
+    setOtherCitiesOpen(false);
+    setPriceFilter(null);
+    setMore(null);
   };
 
   const toggleDate = (id: DateFilter) => {
     setPickedDate("");
     setDateFilter((cur) => (cur === id ? "any" : id));
   };
+
+  const toggleCity = (c: string) => setCity((cur) => (cur === c ? null : c));
+  const togglePrice = (p: PriceFilter) => setPriceFilter((cur) => (cur === p ? null : p));
+  const toggleMore = (id: string) => setMore((cur) => (cur === id ? null : id));
 
   const evening = isEveningNow(new Date());
   const primaryWhen: DateFilter = evening ? "tonight" : "today";
@@ -181,16 +241,69 @@ function WhatsOnScreen() {
           </button>
         </div>
 
-        {filtersOpen && (cities.length > 0 || activities.some((a) => a.price === 0)) && (
-          <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1">
-            <Chip active={freeOnly} onClick={() => setFreeOnly((v) => !v)}>
-              Free
-            </Chip>
-            {cities.map((c) => (
-              <Chip key={c} active={city === c} onClick={() => setCity(city === c ? null : c)}>
-                {c}
-              </Chip>
-            ))}
+        {filtersOpen && (
+          <div className="space-y-2.5 rounded-2xl bg-muted/60 p-3">
+            {(hasTlv || hasJerusalem || otherCities.length > 0) && (
+              <FilterGroup label="Location">
+                {hasTlv && (
+                  <Chip active={city === TEL_AVIV} onClick={() => toggleCity(TEL_AVIV)}>
+                    Tel Aviv
+                  </Chip>
+                )}
+                {hasJerusalem && (
+                  <Chip active={city === JERUSALEM} onClick={() => toggleCity(JERUSALEM)}>
+                    Jerusalem
+                  </Chip>
+                )}
+                {otherCities.length > 0 && (
+                  <Chip
+                    active={otherCitiesOpen || (city !== null && city !== TEL_AVIV && city !== JERUSALEM)}
+                    onClick={() => setOtherCitiesOpen((v) => !v)}
+                  >
+                    Other
+                  </Chip>
+                )}
+              </FilterGroup>
+            )}
+            {otherCitiesOpen && otherCities.length > 0 && (
+              <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1 pl-6">
+                {otherCities.map((c) => (
+                  <Chip key={c} active={city === c} onClick={() => toggleCity(c)}>
+                    {c}
+                  </Chip>
+                ))}
+              </div>
+            )}
+
+            {(priceBuckets.free || priceBuckets.paid || priceBuckets.unknown) && (
+              <FilterGroup label="Price">
+                {priceBuckets.free && (
+                  <Chip active={priceFilter === "free"} onClick={() => togglePrice("free")}>
+                    Free
+                  </Chip>
+                )}
+                {priceBuckets.paid && (
+                  <Chip active={priceFilter === "paid"} onClick={() => togglePrice("paid")}>
+                    Paid
+                  </Chip>
+                )}
+                {priceBuckets.unknown && (
+                  <Chip active={priceFilter === "unknown"} onClick={() => togglePrice("unknown")}>
+                    See price
+                  </Chip>
+                )}
+              </FilterGroup>
+            )}
+
+            {moreOptions.length > 0 && (
+              <FilterGroup label="More">
+                {moreOptions.map((o) => (
+                  <Chip key={o.id} active={more === o.id} onClick={() => toggleMore(o.id)}>
+                    {o.label}
+                  </Chip>
+                ))}
+              </FilterGroup>
+            )}
           </div>
         )}
       </div>
@@ -373,5 +486,15 @@ function Chip({
     >
       {children}
     </button>
+  );
+}
+
+/** One labelled row inside the Filters panel — a secondary dimension, never a restatement of the primary WHAT row. */
+function FilterGroup({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-1">
+      <p className="px-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
+      <div className="flex flex-wrap gap-1.5">{children}</div>
+    </div>
   );
 }

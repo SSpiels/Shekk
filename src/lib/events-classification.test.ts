@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyKind, classifySourceCategory } from "./events-classification";
+import { classifyEvent, classifyKind, classifySourceCategory, classifySubcategory, deriveTags } from "./events-classification";
 
 /**
  * Every case below is a real event from the live published dataset, found
@@ -294,5 +294,85 @@ describe("classifyKind", () => {
   it("labels nightlife club and outdoors tiyul", () => {
     expect(classifyKind("nightlife", "Pub Crawl")).toBe("club");
     expect(classifyKind("outdoors", "Hiking trip")).toBe("tiyul");
+  });
+});
+
+describe("classifyEvent — subcategory + tags, using the exact examples from the brief", () => {
+  it('"Pub Crawl": nightlife / pub_crawl / [bars, social, group_activity]', () => {
+    const result = classifyEvent({
+      title: "Pub Crawl",
+      description:
+        "4 bars/clubs, free VIP entry to every venue, skip the lines, a free shot at every bar. We stop at bars Kuli Alma, Bavel, Mind.",
+      host: "D-TLV",
+    });
+    expect(result.sourceCategory).toBe("nightlife");
+    expect(result.subcategory).toBe("pub_crawl");
+    expect(result.tags).toEqual(expect.arrayContaining(["bars", "social", "group_activity"]));
+  });
+
+  it('"Sukkah Party Under the Stars with Cocktails": jewish primary, with a nightlife-flavour tag despite not being nightlife primary', () => {
+    const result = classifyEvent({
+      title: "Sukkah Party Under the Stars with Cocktails — Tribe Tel Aviv",
+      description:
+        "Sukkah Party in Central Tel Aviv with Bartender/cocktails and live music. Young Adults in their 20s & 30s only. Our sukkah at the Ichud Olam synagogue.",
+      host: "Tribe Tel Aviv",
+    });
+    expect(result.sourceCategory).toBe("jewish");
+    expect(result.tags).toContain("nightlife"); // flavour tag, distinct from primary
+    expect(result.tags).toContain("cocktails");
+    expect(result.tags).toContain("young_professionals");
+  });
+
+  it('"Shabbat dinner with live music": jewish / friday_night_dinner / [food, community, live_music]', () => {
+    const result = classifyEvent({
+      title: "Shabbat dinner with live music",
+      description: "Join our community for a Friday night dinner with live music and great food.",
+      host: "Beit Daniel",
+    });
+    expect(result.sourceCategory).toBe("jewish");
+    expect(result.subcategory).toBe("friday_night_dinner");
+    expect(result.tags).toEqual(expect.arrayContaining(["food", "community", "live_music"]));
+  });
+});
+
+describe("classifySubcategory — conservative, only within a matching category", () => {
+  it("never assigns pub_crawl outside the nightlife category, even if the phrase appears", () => {
+    expect(classifySubcategory("attractions", "read about our famous pub crawl history")).toBeNull();
+  });
+
+  it("distinguishes a genuine Friday night dinner from a generic holiday mention", () => {
+    expect(classifySubcategory("jewish", "join us for shabbat dinner this friday")).toBe("friday_night_dinner");
+    expect(classifySubcategory("jewish", "sukkot celebration at the community centre")).toBe("holiday_event");
+  });
+
+  it("returns null when nothing specific matches", () => {
+    expect(classifySubcategory("jewish", "torah class with rabbi eli")).toBeNull();
+  });
+});
+
+describe("deriveTags — category mirroring and conservative flavour tags", () => {
+  it("mirrors sport/outdoors/workshops/wellness/food categories directly as tags", () => {
+    expect(deriveTags({ title: "x" }, "sport", null)).toContain("sport");
+    expect(deriveTags({ title: "x" }, "outdoors", null)).toContain("outdoors");
+    expect(deriveTags({ title: "x" }, "workshops", null)).toContain("workshops");
+    expect(deriveTags({ title: "x" }, "wellness", null)).toContain("wellness");
+    expect(deriveTags({ title: "x" }, "food", null)).toContain("food");
+  });
+
+  it("does not add a redundant nightlife/live_music tag when that's already the primary category", () => {
+    const nightlifeTags = deriveTags({ title: "Off Grid", description: "Mid-week techno party" }, "nightlife", null);
+    expect(nightlifeTags).not.toContain("nightlife");
+    const concertTags = deriveTags({ title: "Live Concert", description: "live music tonight" }, "concerts", null);
+    expect(concertTags).not.toContain("live_music");
+  });
+
+  it("detects volunteering from text regardless of category", () => {
+    expect(deriveTags({ title: "Otef Aza Tour", description: "A volunteer day in the Gaza Envelope" }, "outdoors", null)).toContain(
+      "volunteering",
+    );
+  });
+
+  it("returns no tags for genuinely generic content", () => {
+    expect(deriveTags({ title: "Gilmore girls magnets", description: "Trivia and magnet making" }, "attractions", null)).toEqual([]);
   });
 });

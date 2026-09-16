@@ -416,6 +416,8 @@ export type Database = {
           source_category: string | null
           starts_at: string
           status: string
+          subcategory: string | null
+          tags: string[]
           terms_url: string | null
           title: string
           updated_at: string
@@ -452,6 +454,8 @@ export type Database = {
           source_category?: string | null
           starts_at: string
           status?: string
+          subcategory?: string | null
+          tags?: string[]
           terms_url?: string | null
           title: string
           updated_at?: string
@@ -488,6 +492,8 @@ export type Database = {
           source_category?: string | null
           starts_at?: string
           status?: string
+          subcategory?: string | null
+          tags?: string[]
           terms_url?: string | null
           title?: string
           updated_at?: string

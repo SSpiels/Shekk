@@ -39,6 +39,10 @@ export type PartnerEvent = {
   integrationType: IntegrationType;
   /** Shekk's own category vocabulary (see `lib/activities.ts`), when known. */
   sourceCategory?: string | null;
+  /** A finer, optional classification under sourceCategory (see `lib/events-classification.ts`) — most events have none. */
+  subcategory?: string | null;
+  /** Controlled multi-value tags (see `lib/events-classification.ts`). */
+  tags?: string[];
   /** The source's own id/slug for this listing — kept distinct from `ref` (the dedupe key) for traceability. */
   externalProviderId?: string | null;
 };
@@ -110,6 +114,8 @@ export async function syncPartnerEvents(provider: PartnerId): Promise<{ synced: 
     external_provider_id: e.externalProviderId ?? e.ref,
     integration_type: e.integrationType,
     source_category: e.sourceCategory ?? null,
+    subcategory: e.subcategory ?? null,
+    tags: e.tags ?? [],
     last_verified_at: new Date().toISOString(),
     availability_confidence: "recent" as const,
     // Trusted API partners publish immediately, matching today's behaviour.

@@ -18,7 +18,7 @@
 
 import { parse } from "node-html-parser";
 import type { PartnerEvent } from "./events-provider.server";
-import { classifyKind, classifySourceCategory } from "./events-classification";
+import { classifyEvent, classifyKind } from "./events-classification";
 
 const LISTING_URL = "https://www.secrettelaviv.com/tickets";
 const SOURCE_HOST = "Secret Tel Aviv";
@@ -152,7 +152,7 @@ export async function listSecretTelAvivEvents(): Promise<PartnerEvent[]> {
       : null;
 
     const coverUrl = row.querySelector("td.event-image img")?.getAttribute("src") ?? null;
-    const sourceCategory = classifySourceCategory({ title, description, host: SOURCE_HOST });
+    const { sourceCategory, subcategory, tags } = classifyEvent({ title, description, host: SOURCE_HOST });
 
     out.push({
       ref,
@@ -171,6 +171,8 @@ export async function listSecretTelAvivEvents(): Promise<PartnerEvent[]> {
       externalBookingUrl: href,
       integrationType: "affiliate_link",
       sourceCategory,
+      subcategory,
+      tags,
     });
   }
 

@@ -19,6 +19,8 @@ const base: ActivityLike = {
   externalBookingUrl: null,
   programmeStatus: "independent",
   sourceCategory: null,
+  subcategory: null,
+  tags: [],
   startsAt: "2026-08-27T21:00:00.000Z",
 };
 
