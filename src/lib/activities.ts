@@ -88,6 +88,59 @@ export function matchesCategory(a: ActivityLike, category: ActivityCategory): bo
   return category === "all" || categoryOf(a) === category;
 }
 
+/* --------------------------------------------------------- discovery groups --- */
+
+/**
+ * The student-facing category set on What's On — a small, curated grouping
+ * over the richer `ActivityCategory` values above. "Nightlife" is not split
+ * into Clubs/Bars here: nothing in the current source data reliably tells a
+ * club from a bar apart (title text alone isn't enough), so a real split
+ * would just produce confident-looking wrong answers. That's a data-quality
+ * improvement to make later, not a UI change to fake now.
+ */
+export type DiscoveryCategory = "all" | "nightlife" | "concerts" | "activities" | "jewish" | "programme";
+
+export const DISCOVERY_LABEL: Record<DiscoveryCategory, string> = {
+  all: "All",
+  nightlife: "Nightlife",
+  concerts: "Concerts",
+  activities: "Activities",
+  jewish: "Jewish · Shabbat",
+  programme: "My Programme",
+};
+
+export const DISCOVERY_ORDER: DiscoveryCategory[] = [
+  "all",
+  "nightlife",
+  "concerts",
+  "activities",
+  "jewish",
+  "programme",
+];
+
+const DISCOVERY_GROUPS: Record<Exclude<DiscoveryCategory, "all">, ActivityCategory[]> = {
+  nightlife: ["nightlife"],
+  concerts: ["concerts"],
+  activities: ["sport", "outdoors", "attractions", "food"],
+  jewish: ["jewish"],
+  programme: ["programme"],
+};
+
+export function matchesDiscovery(a: ActivityLike, discovery: DiscoveryCategory): boolean {
+  return discovery === "all" || DISCOVERY_GROUPS[discovery].includes(categoryOf(a));
+}
+
+/** The discovery group an activity's underlying category belongs to — for showing its chip label on a card. */
+export function discoveryOf(category: ActivityCategory): Exclude<DiscoveryCategory, "all"> {
+  for (const [discovery, members] of Object.entries(DISCOVERY_GROUPS) as [
+    Exclude<DiscoveryCategory, "all">,
+    ActivityCategory[],
+  ][]) {
+    if (members.includes(category)) return discovery;
+  }
+  return "activities";
+}
+
 /* ---------------------------------------------------------------------- dates --- */
 
 const DAY = 86_400_000;

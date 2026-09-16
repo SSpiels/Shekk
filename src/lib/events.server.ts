@@ -240,20 +240,45 @@ async function soldByEvent(eventIds: string[]): Promise<Record<string, number>> 
 
 /* ------------------------------------------------------------------ reads --- */
 
+/** How long a no-end-time event still counts as "upcoming" after it started. */
+const NO_END_TIME_GRACE_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * A published event still belongs on "what's upcoming": either it hasn't
+ * ended yet — a real `endsAt` still in the future, however long ago it
+ * started — or, when no end time is known at all, it started recently
+ * enough to still plausibly be relevant.
+ */
+export function isStillUpcoming(
+  event: { startsAt: string; endsAt: string | null },
+  now: Date = new Date(),
+): boolean {
+  if (event.endsAt) return new Date(event.endsAt).getTime() >= now.getTime();
+  return new Date(event.startsAt).getTime() >= now.getTime() - NO_END_TIME_GRACE_MS;
+}
+
 /** Every published event still to come, soonest first. */
 export async function listUpcoming(): Promise<PublicEvent[]> {
   const db = await admin();
+  const now = new Date();
+  const graceCutoff = new Date(now.getTime() - NO_END_TIME_GRACE_MS).toISOString();
   const { data, error } = await db
     .from("events")
     .select("*")
     .eq("status", "published")
-    .gte("starts_at", new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString())
+    // A coarse, efficient pre-filter matching `isStillUpcoming`'s shape —
+    // the exact decision (including the no-end-time grace window) is made
+    // in JS below via that same tested function, so this only needs to be a
+    // safe superset, not the source of truth.
+    .or(`ends_at.gte.${now.toISOString()},and(ends_at.is.null,starts_at.gte.${graceCutoff})`)
     .order("starts_at", { ascending: true })
     .limit(200);
 
   if (error) rethrow(error.message, "Could not load events");
 
-  const rows = (data ?? []) as EventRow[];
+  const rows = ((data ?? []) as EventRow[]).filter((r) =>
+    isStillUpcoming({ startsAt: r.starts_at, endsAt: r.ends_at }, now),
+  );
   const sold = await soldByEvent(rows.map((r) => r.id));
   return rows.map((r) => shape(r, sold[r.id] ?? 0));
 }

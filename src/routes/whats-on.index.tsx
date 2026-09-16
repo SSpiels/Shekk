@@ -1,19 +1,20 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, Search, Ticket, X } from "lucide-react";
+import { CalendarDays, Flame, Moon, PartyPopper, Search, Sun, Ticket, X } from "lucide-react";
 import { AppShell, Card } from "@/components/AppShell";
 import { ErrorState } from "@/components/Kit";
 import { dayLabel, eventWhen, useEvents } from "@/lib/useEvents";
 import { ils } from "@/lib/mock";
 import {
-  CATEGORY_LABEL,
-  CATEGORY_ORDER,
+  DISCOVERY_LABEL,
+  DISCOVERY_ORDER,
   categoryOf,
+  discoveryOf,
   groupByDay,
-  matchesCategory,
   matchesDate,
+  matchesDiscovery,
   providerLabel,
-  type ActivityCategory,
+  type DiscoveryCategory,
   type DateFilter,
 } from "@/lib/activities";
 import { track } from "@/lib/analytics";
@@ -39,11 +40,18 @@ export const Route = createFileRoute("/whats-on/")({
   component: WhatsOnScreen,
 });
 
-const DATE_CHIPS: { id: DateFilter; label: string }[] = [
-  { id: "any", label: "Anytime" },
-  { id: "today", label: "Today" },
-  { id: "tonight", label: "Tonight" },
-  { id: "weekend", label: "This weekend" },
+/**
+ * The main discovery structure: four time-based quick picks a student can
+ * tap in one move. Each toggles off if tapped again (back to "any date"),
+ * the same pattern the Free chip below already uses. Shabbat is a shortcut
+ * over the existing weekend window + Jewish category, not a new date concept
+ * — a real sundown/havdalah-aware window is a later improvement, not this
+ * sprint's.
+ */
+const QUICK_PICKS: { id: DateFilter; label: string; icon: typeof Moon }[] = [
+  { id: "tonight", label: "Tonight", icon: Moon },
+  { id: "today", label: "Today", icon: Sun },
+  { id: "weekend", label: "This weekend", icon: PartyPopper },
 ];
 
 function WhatsOnScreen() {
@@ -51,7 +59,7 @@ function WhatsOnScreen() {
   const [query, setQuery] = useState("");
   const [dateFilter, setDateFilter] = useState<DateFilter>("any");
   const [pickedDate, setPickedDate] = useState<string>("");
-  const [category, setCategory] = useState<ActivityCategory>("all");
+  const [category, setCategory] = useState<DiscoveryCategory>("all");
   const [city, setCity] = useState<string | null>(null);
   const [freeOnly, setFreeOnly] = useState(false);
 
@@ -67,7 +75,7 @@ function WhatsOnScreen() {
     const effectiveDate: DateFilter = pickedDate ? "date" : dateFilter;
     return activities.filter((a) => {
       if (!matchesDate(a.startsAt, effectiveDate, { pickedDate: pickedDate || null })) return false;
-      if (!matchesCategory(a, category)) return false;
+      if (!matchesDiscovery(a, category)) return false;
       if (city && a.city !== city) return false;
       if (freeOnly && a.price !== 0) return false;
       if (q && ![a.title, a.host, a.venue ?? "", a.city ?? ""].join(" ").toLowerCase().includes(q)) return false;
@@ -93,12 +101,29 @@ function WhatsOnScreen() {
     setFreeOnly(false);
   };
 
+  const toggleQuickDate = (id: DateFilter) => {
+    setPickedDate("");
+    setDateFilter((cur) => (cur === id ? "any" : id));
+  };
+
+  const shabbatActive = !pickedDate && dateFilter === "weekend" && category === "jewish";
+  const toggleShabbat = () => {
+    setPickedDate("");
+    if (shabbatActive) {
+      setDateFilter("any");
+      setCategory("all");
+    } else {
+      setDateFilter("weekend");
+      setCategory("jewish");
+    }
+  };
+
   return (
     <AppShell>
       <header className="px-5 pt-7">
         <h1 className="font-display text-4xl font-bold tracking-tight">What&apos;s On</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Things to do around you — tonight, this weekend and with your programme.
+          Tonight, this weekend, or for Shabbat — see what&apos;s actually on.
         </p>
       </header>
 
@@ -118,19 +143,21 @@ function WhatsOnScreen() {
           ) : null}
         </label>
 
+        <div className="grid grid-cols-4 gap-2">
+          {QUICK_PICKS.map((p) => {
+            const active = !pickedDate && dateFilter === p.id;
+            return (
+              <QuickPick key={p.id} active={active} onClick={() => toggleQuickDate(p.id)} icon={p.icon}>
+                {p.label}
+              </QuickPick>
+            );
+          })}
+          <QuickPick active={shabbatActive} onClick={toggleShabbat} icon={Flame}>
+            Shabbat
+          </QuickPick>
+        </div>
+
         <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1">
-          {DATE_CHIPS.map((c) => (
-            <Chip
-              key={c.id}
-              active={!pickedDate && dateFilter === c.id}
-              onClick={() => {
-                setPickedDate("");
-                setDateFilter(c.id);
-              }}
-            >
-              {c.label}
-            </Chip>
-          ))}
           <label
             className={`tap flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold ${
               pickedDate ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
@@ -146,12 +173,9 @@ function WhatsOnScreen() {
               className="w-0 opacity-0"
             />
           </label>
-        </div>
-
-        <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1">
-          {CATEGORY_ORDER.map((c) => (
+          {DISCOVERY_ORDER.map((c) => (
             <Chip key={c} active={category === c} onClick={() => setCategory(c)}>
-              {CATEGORY_LABEL[c]}
+              {DISCOVERY_LABEL[c]}
             </Chip>
           ))}
         </div>
@@ -226,27 +250,60 @@ function WhatsOnScreen() {
         )}
 
         <div className="space-y-6">
-          {groups.map((group) => (
-            <div key={group.key} className="space-y-2.5">
-              <p className="px-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
-                {dayLabel(group.items[0].startsAt)}
-              </p>
-              {group.items.map((a) => (
-                <ActivityCard key={a.id} activity={a} />
-              ))}
-            </div>
-          ))}
+          {groups.map((group) => {
+            const label = dayLabel(group.items[0].startsAt);
+            const compact = label === "Today" || label === "Tomorrow";
+            return (
+              <div key={group.key} className="space-y-2.5">
+                <p className="px-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">{label}</p>
+                {group.items.map((a) => (
+                  <ActivityCard key={a.id} activity={a} compact={compact} />
+                ))}
+              </div>
+            );
+          })}
         </div>
       </div>
     </AppShell>
   );
 }
 
+function QuickPick({
+  children,
+  active,
+  onClick,
+  icon: Icon,
+}: {
+  children: React.ReactNode;
+  active: boolean;
+  onClick: () => void;
+  icon: typeof Moon;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`tap flex flex-col items-center gap-1.5 rounded-2xl border px-2 py-3 text-center ${
+        active
+          ? "border-primary bg-primary text-primary-foreground shadow-card"
+          : "border-border bg-card text-foreground shadow-card"
+      }`}
+    >
+      <Icon className="size-5" />
+      <span className="text-[11px] font-bold leading-tight">{children}</span>
+    </button>
+  );
+}
+
+function timeOnly(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
 type Activity = NonNullable<ReturnType<typeof useEvents>["data"]>[number];
 
-function ActivityCard({ activity: a }: { activity: Activity }) {
+function ActivityCard({ activity: a, compact }: { activity: Activity; compact: boolean }) {
   const programme = a.programmeStatus !== "independent";
   const cat = categoryOf(a);
+  const attribution = providerLabel(a.provider) === "the provider" ? null : providerLabel(a.provider);
   return (
     <Link to="/whats-on/event/$id" params={{ id: a.id }} className="tap block">
       <Card className={`flex gap-3 ${programme ? "border-primary/30 bg-primary-soft/40" : ""}`}>
@@ -255,10 +312,10 @@ function ActivityCard({ activity: a }: { activity: Activity }) {
             src={a.coverUrl}
             alt={a.title}
             loading="lazy"
-            className="size-16 shrink-0 rounded-xl object-cover"
+            className="size-20 shrink-0 rounded-2xl object-cover"
           />
         ) : (
-          <span className="flex size-16 shrink-0 items-center justify-center rounded-xl bg-muted text-2xl">
+          <span className="flex size-20 shrink-0 items-center justify-center rounded-2xl bg-muted text-2xl">
             {a.emoji || "🎟️"}
           </span>
         )}
@@ -269,19 +326,20 @@ function ActivityCard({ activity: a }: { activity: Activity }) {
               {a.price === null ? "See price" : a.price === 0 ? "Free" : ils(a.price)}
             </span>
           </div>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">{eventWhen(a.startsAt)}</p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {compact ? timeOnly(a.startsAt) : eventWhen(a.startsAt)}
+          </p>
           <p className="truncate text-xs text-muted-foreground">
             {[a.venue, a.city].filter(Boolean).join(" · ") || a.host}
+            {attribution && !programme ? ` · via ${attribution}` : ""}
           </p>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <Tag>{CATEGORY_LABEL[cat]}</Tag>
+            <Tag>{DISCOVERY_LABEL[discoveryOf(cat)]}</Tag>
             {programme ? (
               <Tag tone="primary">
                 {a.programmeStatus === "programme_included" ? "Included in your programme" : "Programme activity"}
               </Tag>
-            ) : (
-              <Tag>{providerLabel(a.provider) === "the provider" ? a.host : providerLabel(a.provider)}</Tag>
-            )}
+            ) : null}
             {a.ageMin ? <Tag>{a.ageMin}+</Tag> : null}
             {a.remaining !== null && a.remaining <= 0 ? <Tag tone="muted">Sold out</Tag> : null}
           </div>

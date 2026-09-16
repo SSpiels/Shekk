@@ -5,6 +5,7 @@ import {
   categoryOf,
   groupByDay,
   matchesDate,
+  matchesDiscovery,
   weekendWindow,
   type ActivityLike,
 } from "./activities";
@@ -148,6 +149,34 @@ describe("categoryOf", () => {
   it("falls back to the Shekk event kind", () => {
     expect(categoryOf({ kind: "tiyul", sourceCategory: null, programmeStatus: "independent" })).toBe("outdoors");
     expect(categoryOf({ kind: "shabbaton", sourceCategory: null, programmeStatus: "independent" })).toBe("jewish");
+  });
+});
+
+describe("matchesDiscovery", () => {
+  it("groups food, attractions, sport and outdoors under Activities", () => {
+    for (const sourceCategory of ["food", "attractions", "sport", "outdoors"]) {
+      expect(matchesDiscovery({ ...base, sourceCategory }, "activities")).toBe(true);
+    }
+    expect(matchesDiscovery({ ...base, sourceCategory: "nightlife" }, "activities")).toBe(false);
+  });
+
+  it("keeps nightlife and concerts as their own single-category groups", () => {
+    expect(matchesDiscovery({ ...base, sourceCategory: "nightlife" }, "nightlife")).toBe(true);
+    expect(matchesDiscovery({ ...base, sourceCategory: "concerts" }, "nightlife")).toBe(false);
+    expect(matchesDiscovery({ ...base, sourceCategory: "concerts" }, "concerts")).toBe(true);
+  });
+
+  it("routes programme activities to My Programme regardless of source category", () => {
+    expect(
+      matchesDiscovery(
+        { ...base, sourceCategory: "nightlife", programmeStatus: "programme_included" },
+        "programme",
+      ),
+    ).toBe(true);
+  });
+
+  it("All matches everything", () => {
+    expect(matchesDiscovery({ ...base, sourceCategory: "jewish" }, "all")).toBe(true);
   });
 });
 
