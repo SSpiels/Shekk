@@ -176,7 +176,7 @@ export function useSetEventStatus() {
   });
 }
 
-export type EventSourceId = "eventer" | "tickchak" | "secret_tel_aviv";
+export type EventSourceId = "eventer" | "tickchak" | "secret_tel_aviv" | "nbn";
 
 export function useSyncPartner() {
   const fn = useServerFn(adminSyncPartner);

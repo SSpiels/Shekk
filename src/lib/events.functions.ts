@@ -154,7 +154,7 @@ export const adminEventTickets = createServerFn({ method: "POST" })
 export const adminSyncPartner = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) =>
-    z.object({ provider: z.enum(["eventer", "tickchak", "secret_tel_aviv"]) }).parse(data),
+    z.object({ provider: z.enum(["eventer", "tickchak", "secret_tel_aviv", "nbn"]) }).parse(data),
   )
   .handler(async ({ data, context }) => {
     await assertAdmin(context);

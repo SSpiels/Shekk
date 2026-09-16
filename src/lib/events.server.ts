@@ -276,8 +276,14 @@ export async function listUpcoming(): Promise<PublicEvent[]> {
 
   if (error) rethrow(error.message, "Could not load events");
 
-  const rows = ((data ?? []) as EventRow[]).filter((r) =>
-    isStillUpcoming({ startsAt: r.starts_at, endsAt: r.ends_at }, now),
+  // A row flagged as a likely cross-source duplicate (see events-dedupe.ts)
+  // never reaches students — only its canonical counterpart does. Both rows
+  // stay in the database either way; this only affects what's shown here.
+  const { suppressedDuplicateEventIds } = await import("./events-dedupe.server");
+  const suppressed = await suppressedDuplicateEventIds();
+
+  const rows = ((data ?? []) as EventRow[]).filter(
+    (r) => isStillUpcoming({ startsAt: r.starts_at, endsAt: r.ends_at }, now) && !suppressed.has(r.id),
   );
   const sold = await soldByEvent(rows.map((r) => r.id));
   return rows.map((r) => shape(r, sold[r.id] ?? 0));

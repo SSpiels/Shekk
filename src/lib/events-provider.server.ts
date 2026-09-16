@@ -43,12 +43,13 @@ export type PartnerEvent = {
   externalProviderId?: string | null;
 };
 
-export type PartnerId = "eventer" | "tickchak" | "secret_tel_aviv";
+export type PartnerId = "eventer" | "tickchak" | "secret_tel_aviv" | "nbn";
 
 const SOURCES: Record<PartnerId, { kind: "api" | "scrape"; reviewRequired: boolean }> = {
   eventer: { kind: "api", reviewRequired: false },
   tickchak: { kind: "api", reviewRequired: false },
   secret_tel_aviv: { kind: "scrape", reviewRequired: true },
+  nbn: { kind: "scrape", reviewRequired: true },
 };
 
 function credentials(provider: "eventer" | "tickchak"): string | null {
@@ -72,6 +73,10 @@ export async function listPartnerEvents(provider: PartnerId): Promise<PartnerEve
   if (provider === "secret_tel_aviv") {
     const { listSecretTelAvivEvents } = await import("./events-secret-tel-aviv.server");
     return listSecretTelAvivEvents();
+  }
+  if (provider === "nbn") {
+    const { listNbnEvents } = await import("./events-nbn.server");
+    return listNbnEvents();
   }
   const key = credentials(provider);
   if (!key) return [];
@@ -122,5 +127,16 @@ export async function syncPartnerEvents(provider: PartnerId): Promise<{ synced: 
     console.error(`[events] ${provider} sync:`, error.message);
     throw new Error("Could not sync partner events");
   }
+
+  // Conservative cross-source duplicate detection — see events-dedupe.ts.
+  // Never blocks or fails the sync itself; a dedupe hiccup shouldn't lose a
+  // successful import.
+  try {
+    const { detectCrossSourceDuplicates } = await import("./events-dedupe.server");
+    await detectCrossSourceDuplicates(provider);
+  } catch (err) {
+    console.error(`[events] ${provider} dedupe pass:`, err instanceof Error ? err.message : err);
+  }
+
   return { synced: rows.length };
 }

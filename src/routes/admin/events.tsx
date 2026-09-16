@@ -22,6 +22,7 @@ const KINDS: EventDraft["kind"][] = ["shabbaton", "tiyul", "club", "shiur", "che
 
 const SOURCES: { id: EventSourceId; label: string }[] = [
   { id: "secret_tel_aviv", label: "Secret Tel Aviv (scraped, lands as draft)" },
+  { id: "nbn", label: "Nefesh B'Nefesh (scraped, lands as draft)" },
   { id: "eventer", label: "Eventer (partner API)" },
   { id: "tickchak", label: "Tickchak (partner API)" },
 ];

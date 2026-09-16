@@ -289,6 +289,51 @@ export type Database = {
           },
         ]
       }
+      event_duplicate_links: {
+        Row: {
+          canonical_event_id: string
+          detected_at: string
+          dismissed: boolean
+          event_id: string
+          id: string
+          matched_on: string[]
+          title_similarity: number | null
+        }
+        Insert: {
+          canonical_event_id: string
+          detected_at?: string
+          dismissed?: boolean
+          event_id: string
+          id?: string
+          matched_on?: string[]
+          title_similarity?: number | null
+        }
+        Update: {
+          canonical_event_id?: string
+          detected_at?: string
+          dismissed?: boolean
+          event_id?: string
+          id?: string
+          matched_on?: string[]
+          title_similarity?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "event_duplicate_links_canonical_event_id_fkey"
+            columns: ["canonical_event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "event_duplicate_links_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       event_tickets: {
         Row: {
           amount_agorot: number
