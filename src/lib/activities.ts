@@ -287,16 +287,17 @@ export const CATEGORY_TYPE_OPTIONS: Partial<Record<DiscoveryCategory, FilterOpti
 };
 
 /**
- * Cross-cutting "who is this for / what's the vibe" filters — kept separate
- * from Type so the same option can apply under any primary category. Also
- * hidden at render time unless the current dataset actually has a match.
+ * Cross-cutting "who is this for" filter — kept separate from Type so it can
+ * apply under any primary category. Deliberately just one option: a wider
+ * "Vibe" grouping (Social/Community/Group activity alongside this) read as
+ * artificial and mixed different concepts, so only the one that clearly
+ * earns a place in the visible UI stays. The "social"/"community"/
+ * "group_activity" tags themselves are untouched in the classifier and
+ * still on every event's `tags` array — just not offered as a filter here
+ * for now. Also hidden at render time unless the current dataset actually
+ * has a match.
  */
-export const VIBE_OPTIONS: FilterOption[] = [
-  { id: "social", label: "Social", kind: "tag" },
-  { id: "young_professionals", label: "Young Professionals", kind: "tag" },
-  { id: "community", label: "Community", kind: "tag" },
-  { id: "group_activity", label: "Group activity", kind: "tag" },
-];
+export const AUDIENCE_OPTIONS: FilterOption[] = [{ id: "young_professionals", label: "Young Professionals", kind: "tag" }];
 
 /* ---------------------------------------------------------------------- dates --- */
 

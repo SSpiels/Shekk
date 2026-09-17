@@ -6,11 +6,11 @@ import { ErrorState } from "@/components/Kit";
 import { dayLabel, eventWhen, useEvents, useMyTickets } from "@/lib/useEvents";
 import { ils } from "@/lib/mock";
 import {
+  AUDIENCE_OPTIONS,
   CATEGORY_TYPE_OPTIONS,
   DISCOVERY_LABEL,
   DISCOVERY_ORDER,
   EVENING_HOUR,
-  VIBE_OPTIONS,
   categoryOf,
   discoveryOf,
   groupByDay,
@@ -79,13 +79,13 @@ function WhatsOnScreen() {
   const [otherCitiesOpen, setOtherCitiesOpen] = useState(false);
   const [priceFilter, setPriceFilter] = useState<PriceFilter | null>(null);
   const [types, setTypes] = useState<Set<string>>(new Set());
-  const [vibes, setVibes] = useState<Set<string>>(new Set());
+  const [audience, setAudience] = useState<Set<string>>(new Set());
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const activities = data ?? [];
 
   // WHEN + WHAT only — every Filters option below is computed from this, so
-  // Location/Price/Type/Vibe only ever offer choices that mean something
+  // Location/Price/Type/Audience only ever offer choices that mean something
   // for what's actually on right now, not the whole catalogue.
   const inScope = useMemo(() => {
     const effectiveDate: DateFilter = pickedDate ? "date" : dateFilter;
@@ -118,7 +118,7 @@ function WhatsOnScreen() {
   );
   const typeOptionMap = useMemo(() => new Map(typeOptions.map((o) => [o.id, o])), [typeOptions]);
 
-  const vibeOptions = useMemo(() => evidencedOptions(inScope, VIBE_OPTIONS), [inScope]);
+  const audienceOptions = useMemo(() => evidencedOptions(inScope, AUDIENCE_OPTIONS), [inScope]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -126,11 +126,11 @@ function WhatsOnScreen() {
       if (locations.size > 0 && !(a.city && locations.has(a.city))) return false;
       if (priceFilter && !matchesPrice(a, priceFilter)) return false;
       if (types.size > 0 && ![...types].some((id) => { const opt = typeOptionMap.get(id); return opt && matchesFilterOption(a, opt); })) return false;
-      if (vibes.size > 0 && ![...vibes].some((id) => a.tags.includes(id))) return false;
+      if (audience.size > 0 && ![...audience].some((id) => a.tags.includes(id))) return false;
       if (q && ![a.title, a.host, a.venue ?? "", a.city ?? ""].join(" ").toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [inScope, query, locations, priceFilter, types, typeOptionMap, vibes]);
+  }, [inScope, query, locations, priceFilter, types, typeOptionMap, audience]);
 
   const groups = useMemo(() => groupByDay(shown), [shown]);
 
@@ -138,7 +138,7 @@ function WhatsOnScreen() {
     if (shown.length > 0) track("activity_impression", { count: shown.length, category, date: dateFilter });
   }, [shown.length, category, dateFilter]);
 
-  const secondaryFilterCount = locations.size + (priceFilter ? 1 : 0) + types.size + vibes.size;
+  const secondaryFilterCount = locations.size + (priceFilter ? 1 : 0) + types.size + audience.size;
   const filtering = Boolean(query.trim()) || dateFilter !== "any" || Boolean(pickedDate) || category !== "all" || secondaryFilterCount > 0;
 
   const clearFilters = () => {
@@ -150,7 +150,7 @@ function WhatsOnScreen() {
     setOtherCitiesOpen(false);
     setPriceFilter(null);
     setTypes(new Set());
-    setVibes(new Set());
+    setAudience(new Set());
   };
 
   const toggleDate = (id: DateFilter) => {
@@ -159,22 +159,22 @@ function WhatsOnScreen() {
   };
 
   // "Narrow it down" is scoped to the current WHAT — switching it resets every
-  // contextual filter, not just Type. Without this, a Location/Vibe pick made
-  // under one category can silently keep filtering an unrelated category (the
-  // panel may show no matching chips to explain why results are empty).
+  // contextual filter, not just Type. Without this, a Location/Audience pick
+  // made under one category can silently keep filtering an unrelated category
+  // (the panel may show no matching chips to explain why results are empty).
   const switchCategory = (c: DiscoveryCategory) => {
     setCategory((cur) => (cur === c ? "all" : c));
     setLocations(new Set());
     setOtherCitiesOpen(false);
     setPriceFilter(null);
     setTypes(new Set());
-    setVibes(new Set());
+    setAudience(new Set());
   };
 
   const toggleLocation = (c: string) => setLocations((cur) => toggleInSet(cur, c));
   const togglePrice = (p: PriceFilter) => setPriceFilter((cur) => (cur === p ? null : p));
   const toggleType = (id: string) => setTypes((cur) => toggleInSet(cur, id));
-  const toggleVibe = (id: string) => setVibes((cur) => toggleInSet(cur, id));
+  const toggleAudience = (id: string) => setAudience((cur) => toggleInSet(cur, id));
 
   const evening = isEveningNow(new Date());
   const primaryWhen: DateFilter = evening ? "tonight" : "today";
@@ -320,10 +320,10 @@ function WhatsOnScreen() {
               </FilterGroup>
             )}
 
-            {vibeOptions.length > 0 && (
-              <FilterGroup label="Vibe">
-                {vibeOptions.map((o) => (
-                  <Chip key={o.id} active={vibes.has(o.id)} onClick={() => toggleVibe(o.id)}>
+            {audienceOptions.length > 0 && (
+              <FilterGroup label="Audience">
+                {audienceOptions.map((o) => (
+                  <Chip key={o.id} active={audience.has(o.id)} onClick={() => toggleAudience(o.id)}>
                     {o.label}
                   </Chip>
                 ))}
