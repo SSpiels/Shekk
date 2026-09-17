@@ -9,6 +9,8 @@
  * Shekk Console. The partner seam lives in `events-provider.server.ts`.
  */
 
+import type { PriceKind } from "./events-price";
+
 /* ---------------------------------------------------------------- shapes --- */
 
 export type EventKind = "shabbaton" | "tiyul" | "club" | "shiur" | "chesed" | "other";
@@ -30,6 +32,10 @@ export type EventRow = {
   ends_at: string | null;
   /** NULL means the price is genuinely unknown — never render or treat that as free. */
   price_agorot: number | null;
+  /** See lib/events-price.ts — richer price display alongside price_agorot. */
+  price_kind: string;
+  price_max_agorot: number | null;
+  price_note: string | null;
   capacity: number;
   per_person_limit: number;
   cover_url: string | null;
@@ -73,6 +79,10 @@ export type PublicEvent = {
   endsAt: string | null;
   /** null = genuinely unknown, never "free". Only 0 means free. */
   price: number | null;
+  /** See lib/events-price.ts — richer price display alongside price/priceKind. */
+  priceKind: PriceKind;
+  priceMax: number | null;
+  priceNote: string | null;
   capacity: number;
   sold: number;
   remaining: number | null;
@@ -172,6 +182,9 @@ function shape(row: EventRow, sold: number): PublicEvent {
     startsAt: row.starts_at,
     endsAt: row.ends_at,
     price: row.price_agorot === null ? null : toShekels(row.price_agorot),
+    priceKind: (row.price_kind ?? "unknown") as PriceKind,
+    priceMax: row.price_max_agorot === null || row.price_max_agorot === undefined ? null : toShekels(row.price_max_agorot),
+    priceNote: row.price_note ?? null,
     capacity: row.capacity,
     sold,
     remaining: row.capacity > 0 ? Math.max(0, row.capacity - sold) : null,

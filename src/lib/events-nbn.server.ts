@@ -27,6 +27,7 @@
 import ical from "node-ical";
 import type { PartnerEvent } from "./events-provider.server";
 import { classifyEvent, classifyKind } from "./events-classification";
+import { parsePriceFromText } from "./events-price";
 
 const FEED_URL = "https://www.nbn.org.il/?mec-ical-feed=1";
 const SOURCE_HOST = "Nefesh B'Nefesh";
@@ -215,6 +216,9 @@ export async function listNbnEvents(): Promise<PartnerEvent[]> {
       host,
       sourceCategoryTags: categories.map((c) => decodeHtmlEntities(c)),
     });
+    // Undefined (not a "kind: unknown" value) when the feed text says nothing about
+    // price — see PartnerEvent.priceInfo's own comment on why that distinction matters.
+    const priceInfo = parsePriceFromText(`${title} ${description ?? ""}`) ?? undefined;
 
     out.push({
       ref: e.uid,
@@ -226,7 +230,7 @@ export async function listNbnEvents(): Promise<PartnerEvent[]> {
       city: extractCity(categories, e.location ?? null),
       startsAt: occurrence.startsAt,
       endsAt: occurrence.endsAt,
-      price: null, // never stated in this feed — never guess "free"
+      priceInfo,
       capacity: 0,
       coverUrl: attachUrl(e.attach),
       externalProviderId: e.uid,

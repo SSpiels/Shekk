@@ -20,6 +20,8 @@
 import type { EventKind } from "./events.server";
 import type { IntegrationType } from "./events.server";
 import type { AutoPublishSummary } from "./events-auto-publish.server";
+import type { PriceEnrichmentSummary } from "./events-price-enrichment.server";
+import type { PriceInfo } from "./events-price";
 
 export type PartnerEvent = {
   ref: string;
@@ -31,8 +33,14 @@ export type PartnerEvent = {
   city: string | null;
   startsAt: string;
   endsAt: string | null;
-  /** null = the source doesn't state one. Never guess — 0 must only ever mean genuinely free. */
-  price: number | null;
+  /**
+   * Explicit price parsed from the source's own feed/listing text — see
+   * lib/events-price.ts. Omitted (not a `kind: "unknown"` value) when
+   * nothing was found, so a later re-sync with no fresh signal never
+   * overwrites a richer result the price-enrichment pass may have found by
+   * visiting the event's own page separately. Never a guess.
+   */
+  priceInfo?: PriceInfo;
   capacity: number;
   coverUrl: string | null;
   /** Where a member ends up when they want to book. */
@@ -91,13 +99,15 @@ export async function listPartnerEvents(provider: PartnerId): Promise<PartnerEve
 }
 
 /** Upsert a source's listings into the catalogue, keyed on provider_ref. */
-export async function syncPartnerEvents(provider: PartnerId): Promise<{ synced: number; autoPublish?: AutoPublishSummary }> {
+export async function syncPartnerEvents(
+  provider: PartnerId,
+): Promise<{ synced: number; autoPublish?: AutoPublishSummary; priceEnrichment?: PriceEnrichmentSummary }> {
   const listings = await listPartnerEvents(provider);
   if (listings.length === 0) return { synced: 0 };
 
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { reviewRequired } = SOURCES[provider];
-  const rows = listings.map((e) => ({
+  const baseRow = (e: PartnerEvent) => ({
     provider,
     provider_ref: e.ref,
     title: e.title,
@@ -108,7 +118,6 @@ export async function syncPartnerEvents(provider: PartnerId): Promise<{ synced: 
     city: e.city,
     starts_at: e.startsAt,
     ends_at: e.endsAt,
-    price_agorot: e.price === null ? null : Math.round(e.price * 100),
     capacity: e.capacity,
     cover_url: e.coverUrl,
     external_booking_url: e.externalBookingUrl,
@@ -125,14 +134,45 @@ export async function syncPartnerEvents(provider: PartnerId): Promise<{ synced: 
     // `status` on an existing row, so it can't silently undo an admin's
     // publish/cancel decision on a listing that's already been reviewed.
     ...(reviewRequired ? {} : { status: "published" as const }),
-  }));
+  });
 
-  const { error } = await supabaseAdmin
-    .from("events")
-    .upsert(rows, { onConflict: "provider,provider_ref" });
-  if (error) {
-    console.error(`[events] ${provider} sync:`, error.message);
-    throw new Error("Could not sync partner events");
+  // PostgREST derives one bulk upsert's column list from the UNION of keys
+  // across every row in the call — a column simply missing from one row's
+  // object still gets written as NULL for that row if ANY other row in the
+  // same call includes it. So rows with a fresh price signal and rows
+  // without one can't share a single upsert call: they're split into two,
+  // each internally uniform, exactly like the `status` field above already
+  // relies on every row in one call sharing the same reviewRequired value.
+  const withPrice = listings.filter((e) => e.priceInfo);
+  const withoutPrice = listings.filter((e) => !e.priceInfo);
+
+  if (withoutPrice.length > 0) {
+    const { error } = await supabaseAdmin
+      .from("events")
+      .upsert(withoutPrice.map(baseRow), { onConflict: "provider,provider_ref" });
+    if (error) {
+      console.error(`[events] ${provider} sync:`, error.message);
+      throw new Error("Could not sync partner events");
+    }
+  }
+
+  if (withPrice.length > 0) {
+    const { error } = await supabaseAdmin
+      .from("events")
+      .upsert(
+        withPrice.map((e) => ({
+          ...baseRow(e),
+          price_agorot: e.priceInfo!.amountAgorot,
+          price_kind: e.priceInfo!.kind,
+          price_max_agorot: e.priceInfo!.maxAmountAgorot,
+          price_note: e.priceInfo!.note,
+        })),
+        { onConflict: "provider,provider_ref" },
+      );
+    if (error) {
+      console.error(`[events] ${provider} sync:`, error.message);
+      throw new Error("Could not sync partner events");
+    }
   }
 
   // Conservative cross-source duplicate detection — see events-dedupe.ts.
@@ -158,5 +198,16 @@ export async function syncPartnerEvents(provider: PartnerId): Promise<{ synced: 
     }
   }
 
-  return { synced: rows.length, autoPublish };
+  // For events still unknown after feed/listing text, visits each one's own
+  // already-linked page and tries again — see events-price-enrichment.server.ts.
+  // Bounded per run, isolated per event, never blocks or fails the sync itself.
+  let priceEnrichment: PriceEnrichmentSummary | undefined;
+  try {
+    const { enrichUnknownPrices } = await import("./events-price-enrichment.server");
+    priceEnrichment = await enrichUnknownPrices(provider);
+  } catch (err) {
+    console.error(`[events] ${provider} price enrichment pass:`, err instanceof Error ? err.message : err);
+  }
+
+  return { synced: listings.length, autoPublish, priceEnrichment };
 }

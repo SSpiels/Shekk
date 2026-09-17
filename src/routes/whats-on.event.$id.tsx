@@ -18,6 +18,7 @@ import { useProgramme } from "@/lib/useProgramme";
 import { ils } from "@/lib/mock";
 import { useApp } from "@/lib/store";
 import { bookingCta, bookingMode, providerLabel } from "@/lib/activities";
+import { formatPriceForDetail } from "@/lib/events-price";
 import { MONEY_ENABLED } from "@/lib/flags";
 import { track } from "@/lib/analytics";
 
@@ -209,11 +210,15 @@ function ActivityDetail() {
             ) : null}
             <p className="flex items-center gap-2">
               <Ticket className="size-4 shrink-0 text-muted-foreground" />
-              {activity.price === null
-                ? `See price on ${providerLabel(activity.provider)}`
-                : activity.price === 0
-                  ? "Free"
-                  : `${ils(activity.price)} per person`}
+              {formatPriceForDetail(
+                {
+                  kind: activity.priceKind,
+                  amountAgorot: activity.price === null ? null : Math.round(activity.price * 100),
+                  maxAmountAgorot: activity.priceMax === null ? null : Math.round(activity.priceMax * 100),
+                  note: activity.priceNote,
+                },
+                providerLabel(activity.provider),
+              )}
               {activity.remaining !== null ? ` · ${activity.remaining} of ${activity.capacity} left` : ""}
             </p>
             {activity.ageMin ? (

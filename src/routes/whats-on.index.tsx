@@ -4,7 +4,7 @@ import { CalendarDays, Moon, PartyPopper, Search, SlidersHorizontal, Sun, Ticket
 import { AppShell, Card } from "@/components/AppShell";
 import { ErrorState } from "@/components/Kit";
 import { dayLabel, eventWhen, useEvents, useMyTickets } from "@/lib/useEvents";
-import { ils } from "@/lib/mock";
+import { formatPriceForCard } from "@/lib/events-price";
 import {
   AUDIENCE_OPTIONS,
   CATEGORY_TYPE_OPTIONS,
@@ -434,6 +434,15 @@ function timeOnly(iso: string): string {
 
 type Activity = NonNullable<ReturnType<typeof useEvents>["data"]>[number];
 
+/** `a.price`/`a.priceMax` are shekels (see events.server.ts's shape()); formatPriceForCard works in agorot. */
+function cardPrice(a: Pick<Activity, "priceKind" | "price" | "priceMax">): string | null {
+  return formatPriceForCard({
+    kind: a.priceKind,
+    amountAgorot: a.price === null ? null : Math.round(a.price * 100),
+    maxAmountAgorot: a.priceMax === null ? null : Math.round(a.priceMax * 100),
+  });
+}
+
 function ActivityCard({ activity: a, compact }: { activity: Activity; compact: boolean }) {
   const programme = a.programmeStatus !== "independent";
   const cat = categoryOf(a);
@@ -456,9 +465,7 @@ function ActivityCard({ activity: a, compact }: { activity: Activity; compact: b
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-2">
             <p className="min-w-0 flex-1 text-sm font-semibold leading-snug">{a.title}</p>
-            <span className="shrink-0 text-sm font-bold">
-              {a.price === null ? "See price" : a.price === 0 ? "Free" : ils(a.price)}
-            </span>
+            <span className="shrink-0 text-sm font-bold">{cardPrice(a)}</span>
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {compact ? timeOnly(a.startsAt) : eventWhen(a.startsAt)}

@@ -19,6 +19,7 @@
 import { parse } from "node-html-parser";
 import type { PartnerEvent } from "./events-provider.server";
 import { classifyEvent, classifyKind } from "./events-classification";
+import { parsePriceFromText } from "./events-price";
 
 const LISTING_URL = "https://www.secrettelaviv.com/tickets";
 const SOURCE_HOST = "Secret Tel Aviv";
@@ -153,6 +154,10 @@ export async function listSecretTelAvivEvents(): Promise<PartnerEvent[]> {
 
     const coverUrl = row.querySelector("td.event-image img")?.getAttribute("src") ?? null;
     const { sourceCategory, subcategory, tags } = classifyEvent({ title, description, host: SOURCE_HOST });
+    // The listing table itself carries no price for any row (confirmed directly,
+    // not assumed) — this exists mainly for symmetry with the NBN adapter and in
+    // case that ever changes. See PartnerEvent.priceInfo's own comment.
+    const priceInfo = parsePriceFromText(`${title} ${description ?? ""}`) ?? undefined;
 
     out.push({
       ref,
@@ -164,7 +169,7 @@ export async function listSecretTelAvivEvents(): Promise<PartnerEvent[]> {
       city: DEFAULT_CITY,
       startsAt: when.startsAt,
       endsAt: when.endsAt,
-      price: null, // never stated by this source — never guess "free"
+      priceInfo,
       capacity: 0,
       coverUrl,
       externalProviderId: ref,
