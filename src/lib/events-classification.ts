@@ -5,18 +5,28 @@
  * Signals, in precedence order (first confident match wins — this is a
  * priority list, not a weighted score, so one strong signal never gets
  * "outvoted" by several weak ones):
- *   0. A source's own explicit, unambiguous category tag (e.g. NBN's
- *      "Shabbat Meals & Activities") — the strongest signal available,
- *      when a source provides one.
+ *   0. A source's own explicit, fully-trusted category tag (e.g. NBN's
+ *      "Shabbat Meals & Activities") — checked before anything else.
  *   1. Explicit religious/communal-practice language, or a recognisably
  *      religious organiser name.
- *   2. Nightlife language (party, club, DJ, rave, late-night).
+ *   1.5. A source's own curated-but-less-proven category tag (e.g. NBN's
+ *      "Lectures & Workshops") — deliberately checked *after* step 1, not
+ *      before it, so it can never override an explicit religious-practice
+ *      signal the audit found it sometimes coexists with. See
+ *      SECONDARY_SOURCE_TAGS for which values and why.
+ *   2. Nightlife language (party, club, DJ, rave, late-night) — a bare
+ *      "party"/"parties" is gated: an exhibition, memorial, photography,
+ *      political-party, or named-musical-ensemble signal elsewhere in the
+ *      same text means that mention is incidental, not the event's nature.
  *   3. Concert/live-music language.
  *   4. Food/drink language.
  *   5. Outdoors/tour language.
  *   6. Sport vs. wellness (movement/mindfulness) language.
  *   7. Workshop/class/seminar language.
- *   8. Fallback: "attractions" — Shekk's existing generic default.
+ *   8. Fallback: "attractions" — Shekk's existing generic default. Within
+ *      this fallback, an exhibition/photography/cinema-club signal earns
+ *      the optional "exhibition_culture" subcategory (still under
+ *      Activities — no new top-level category).
  *
  * A deliberate, evidenced exclusion: a bare holiday name (Sukkot, Yom
  * Kippur, Rosh Hashana, "Chol HaMoed") is NOT on its own treated as a
@@ -53,22 +63,49 @@ const STRONG_SOURCE_TAGS: Record<string, ActivityCategory> = {
   "sport/excercise": "sport",
 };
 
+/**
+ * Curated, but newer and less proven than STRONG_SOURCE_TAGS above — real
+ * NBN category values audited against the live dataset and found low-
+ * ambiguity. Checked *after* explicit religious-practice text (see
+ * classifySourceCategory), not before it: the audit found genuinely Jewish
+ * events ("Sukkot Yom Iyun at Pardes") sitting alongside generic NBN tags,
+ * and a fix already made in a prior sprint ("The Next Pour", jewish→food)
+ * would silently regress if a source tag were allowed to outrank specific
+ * text. Deliberately excludes vaguer NBN values the audit found unreliable
+ * or sometimes wrong: Arts/Creativity, Performance, Film, Television &
+ * Theater, Education in Israel, Masorti/Conservative Community.
+ */
+const SECONDARY_SOURCE_TAGS: Record<string, ActivityCategory> = {
+  "lectures & workshops": "workshops",
+  "health & wellness": "wellness",
+  "ulpan/language exchange": "workshops",
+};
+
 const JEWISH_TEXT_RE =
   /\b(shabbat|shabbaton|kabbalat shabbat|kiddush|\btorah\b|\btanya\b|beit midrash|chavrusa|\bshiur\b|shiurim|yeshiva|synagogue|\bshul\b|davening|\bparsha\b|ushpizin|selichot|yom iyun|night seder|masorti community|conservative community)\b/i;
 const JEWISH_ORG_RE = /\b(chabad|synagogue|\bshul\b|yeshiva|beit midrash|kollel|pardes institute|aish|torah center|congregation)\b/i;
 
 /**
- * "party"/"parties" alone is ambiguous in a way the rest of this list isn't —
- * it's as likely to mean a caregiving visit ("Rosh HaShana Day Party" for
- * isolated Holocaust survivors, run entirely by volunteers) as an actual
- * night out. Evidenced by a real case: that exact event matched "party"
- * three times in its description and picked up a "Nightlife" tag despite
- * being a solemn volunteering event, correctly classified "jewish" on every
- * other signal. Gated separately from the unambiguous phrases below, which
- * don't have this problem.
+ * "party"/"parties" alone is ambiguous in a way the rest of this list isn't.
+ * Evidenced by four real cases, each a bare "party" mention outweighing a
+ * much stronger, more specific signal elsewhere in the same text:
+ *  - a caregiving visit for isolated Holocaust survivors ("Rosh HaShana Day
+ *    Party"), run entirely by volunteers;
+ *  - a photography exhibition ("Hawaii-themed photography exhibition and
+ *    party");
+ *  - an October 7th memorial exhibition, whose description mentions
+ *    "celebrating at the nova party" — the massacre site, not a social
+ *    event;
+ *  - a political townhall ("Amcha Yisrael Party Chairman" — a political
+ *    party, not a celebration).
+ * A named musical ensemble throwing the party (real case: "Frisson Trio")
+ * is treated differently — not suppressed outright, but redirected to
+ * "concerts" (see CONCERT_PHRASES), since that's still genuinely a live-
+ * music event.
  */
 const GENERIC_PARTY_PHRASES = ["party", "parties"];
-const VOLUNTEER_RE = /\bvolunteer/i;
+const PARTY_OVERRIDE_RE =
+  /\bvolunteer|\bexhibition\b|\bmemorial\b|\bphotography\b|\bparty (chairman|leader)\b|\btrio\b|\bquartet\b|\bquintet\b|\bensemble\b/i;
 
 const NIGHTLIFE_PHRASES = [
   "club night",
@@ -88,10 +125,10 @@ const NIGHTLIFE_PHRASES = [
   "bar crawl",
 ];
 
-/** Nightlife language in `text` — the unambiguous phrases always count; a bare "party"/"parties" only counts outside a volunteering context. */
+/** Nightlife language in `text` — the unambiguous phrases always count; a bare "party"/"parties" only counts when nothing stronger overrides it. */
 function hasNightlifeSignal(text: string): boolean {
   if (hasAny(text, NIGHTLIFE_PHRASES)) return true;
-  return hasAny(text, GENERIC_PARTY_PHRASES) && !VOLUNTEER_RE.test(text);
+  return hasAny(text, GENERIC_PARTY_PHRASES) && !PARTY_OVERRIDE_RE.test(text);
 }
 
 const CONCERT_PHRASES = [
@@ -105,6 +142,13 @@ const CONCERT_PHRASES = [
   "live set",
   "live show",
   "show live",
+  // A named musical ensemble is itself a strong live-performance signal —
+  // real case: "Frisson Trio" throwing a birthday party classified
+  // nightlife purely off "Party" until this was added.
+  "trio",
+  "quartet",
+  "quintet",
+  "ensemble",
   "jazz jam",
   "jazz night",
   "jazz workshop",
@@ -115,9 +159,21 @@ const CONCERT_PHRASES = [
   "symphonic",
   "in concert",
 ];
-/** Catches the common "[artist] brings/performs ... live/album/set" phrasing that a fixed phrase list can't enumerate. */
+/**
+ * Catches the common "[artist] brings/performs ... live/album/set" phrasing
+ * that a fixed phrase list can't enumerate. Deliberately excludes a bare
+ * "live at"/"live in" — real bug found while fixing the party/parties false
+ * positives: "Benzi was invited to paint live at a music festival" (an
+ * October 7th memorial exhibition, describing an artist's live painting
+ * years before the event being classified) matched it, misreading an
+ * unrelated backstory detail as this event's own concert signal. Instead,
+ * "live at/in" only counts as a concert signal when led by an invitation
+ * verb (catch/see/watch/join), matching real listing phrasing like "Catch
+ * Inbal Wayne live at Hoodna Bar" — a case that regressed to `attractions`
+ * when "live at" was removed outright, and needed this narrower form back.
+ */
 const CONCERT_LIVE_RE =
-  /\blive\s+(at|in|trio|set|show|album|music)\b|\b(brings?|performs?|sings?)\b.{0,30}\b(live|music|hits|album|set|show)\b/i;
+  /\blive\s+(trio|set|show|album|music)\b|\b(brings?|performs?|sings?)\b.{0,30}\b(live|music|hits|album|set|show)\b|\b(catch|see|watch|join)\b.{0,30}\blive\s+(at|in)\b/i;
 
 const FOOD_PHRASES = [
   "farmers market",
@@ -198,6 +254,12 @@ export function classifySourceCategory(input: ClassificationInput): ActivityCate
   }
 
   if (JEWISH_TEXT_RE.test(text) || (input.host && JEWISH_ORG_RE.test(input.host))) return "jewish";
+
+  for (const tag of tags) {
+    const secondary = SECONDARY_SOURCE_TAGS[tag];
+    if (secondary) return secondary;
+  }
+
   if (hasNightlifeSignal(text)) return "nightlife";
   if (hasAny(text, CONCERT_PHRASES) || CONCERT_LIVE_RE.test(text)) return "concerts";
   if (hasAny(text, FOOD_PHRASES)) return "food";
@@ -237,10 +299,19 @@ const SUBCATEGORY_STARTER_TAGS: Record<EventSubcategory, EventTag[]> = {
   pub_crawl: ["bars", "social", "group_activity"],
   friday_night_dinner: ["food", "community"],
   holiday_event: [],
+  exhibition_culture: [],
 };
 
 const HOLIDAY_NAME_RE = /\b(sukkot|sukkah|yom kippur|rosh hashana|chanukah|hanukkah|purim|pesach|passover|shavuot|simchat torah)\b/i;
 const FRIDAY_NIGHT_DINNER_RE = /\b(shabbat dinner|friday night dinner|kabbalat shabbat)\b/i;
+/**
+ * A real, evidenced gap: photography/art exhibitions and cinema/film-club
+ * content had no home better than the generic "attractions" fallback — and
+ * before the party-override fix above, some were misclassified as nightlife
+ * outright (the Hawaii exhibition). Only fires under the "attractions"
+ * fallback, never overriding a more specific category already found.
+ */
+const EXHIBITION_CULTURE_RE = /\b(exhibitions?|photography exhibit|art exhibit|art gallery|gallery opening|cinema club|film club)\b/i;
 
 /**
  * Deliberately conservative: only fires for the exact patterns above, and
@@ -255,12 +326,15 @@ export function classifySubcategory(category: ActivityCategory, text: string): E
     if (FRIDAY_NIGHT_DINNER_RE.test(text)) return "friday_night_dinner";
     if (HOLIDAY_NAME_RE.test(text)) return "holiday_event";
   }
+  if (category === "attractions" && EXHIBITION_CULTURE_RE.test(text)) return "exhibition_culture";
   return null;
 }
 
 const BARS_PHRASES = ["pub crawl", "bar crawl", "open bar", "cocktail bar", "bars/clubs", "bartender"];
 const COCKTAILS_PHRASES = ["cocktail", "cocktails", "mixology"];
 const DJ_PHRASES = ["dj set", "dj night", "vinyl set", "spinning tunes"];
+/** Deliberately narrow — bare "club" alone matches "book club"/"fan club" far too easily; only unambiguous nightlife-venue wording counts. */
+const CLUB_PHRASES = ["club night", "nightclub", "night club"];
 const COMEDY_PHRASES = ["comedy show", "comedy night", "stand-up", "standup", "stand up comedy", "comedian"];
 const SOCIAL_PHRASES = ["mingle", "meet new people", "singles night", "singles party", "networking event", "meet and greet", "meet & greet"];
 const YOUNG_PROFESSIONALS_PHRASES = ["young professionals", "in their 20s", "20s and 30s", "20s & 30s", "young adults"];
@@ -295,6 +369,7 @@ export function deriveTags(input: ClassificationInput, category: ActivityCategor
   if (hasAny(text, BARS_PHRASES)) tags.add("bars");
   if (hasAny(text, COCKTAILS_PHRASES)) tags.add("cocktails");
   if (hasAny(text, DJ_PHRASES)) tags.add("dj_set");
+  if (hasAny(text, CLUB_PHRASES)) tags.add("clubs");
   if (hasAny(text, COMEDY_PHRASES)) tags.add("comedy");
   if (hasAny(text, SOCIAL_PHRASES)) tags.add("social");
   if (hasAny(text, YOUNG_PROFESSIONALS_PHRASES)) tags.add("young_professionals");

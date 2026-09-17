@@ -57,6 +57,8 @@ export type EventRow = {
   subcategory: string | null;
   /** Controlled multi-value tags — see lib/events-classification.ts. */
   tags: string[];
+  /** The source's own raw category/tag values, verbatim — metadata only, never shaped into PublicEvent. */
+  source_tags: string[];
   programme_status: ProgrammeStatus;
   last_verified_at: string | null;
   availability_confidence: "live" | "recent" | "unknown" | null;

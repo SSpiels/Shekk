@@ -52,6 +52,13 @@ export type PartnerEvent = {
   subcategory?: string | null;
   /** Controlled multi-value tags (see `lib/events-classification.ts`). */
   tags?: string[];
+  /**
+   * The source's own raw category/tag values, verbatim (e.g. NBN's iCal
+   * CATEGORIES) — kept as metadata alongside our derived sourceCategory,
+   * never itself shown to members. A source with no native taxonomy (Secret
+   * Tel Aviv) just omits this.
+   */
+  sourceTags?: string[];
   /** The source's own id/slug for this listing — kept distinct from `ref` (the dedupe key) for traceability. */
   externalProviderId?: string | null;
 };
@@ -126,6 +133,7 @@ export async function syncPartnerEvents(
     source_category: e.sourceCategory ?? null,
     subcategory: e.subcategory ?? null,
     tags: e.tags ?? [],
+    source_tags: e.sourceTags ?? [],
     last_verified_at: new Date().toISOString(),
     availability_confidence: "recent" as const,
     // Trusted API partners publish immediately, matching today's behaviour.

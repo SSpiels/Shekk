@@ -210,11 +210,12 @@ export async function listNbnEvents(): Promise<PartnerEvent[]> {
     const description = e.description ? decodeHtmlEntities(e.description.trim()) || null : null;
     const organiser = organizerName(e.organizer);
     const host = organiser ?? SOURCE_HOST;
+    const nativeCategories = categories.map((c) => decodeHtmlEntities(c));
     const { sourceCategory, subcategory, tags } = classifyEvent({
       title,
       description,
       host,
-      sourceCategoryTags: categories.map((c) => decodeHtmlEntities(c)),
+      sourceCategoryTags: nativeCategories,
     });
     // Undefined (not a "kind: unknown" value) when the feed text says nothing about
     // price — see PartnerEvent.priceInfo's own comment on why that distinction matters.
@@ -239,6 +240,7 @@ export async function listNbnEvents(): Promise<PartnerEvent[]> {
       sourceCategory,
       subcategory,
       tags,
+      sourceTags: nativeCategories,
     });
   }
 

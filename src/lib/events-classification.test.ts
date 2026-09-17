@@ -79,22 +79,89 @@ describe("classifySourceCategory — real misclassifications found in the audit"
     ).toBe("nightlife");
   });
 
-  it('"Faces of October 7th" memorial exhibition (was nightlife — clearly wrong)', () => {
+  // Real case, FULL live description (not a paraphrase) — a prior sprint's
+  // test for this exact event used a one-line excerpt that happened not to
+  // contain "party" at all, so it passed while the real bug (triggered by
+  // "celebrating at the nova party", deep in the full text) went uncaught
+  // in production. This is the actual text that caused it.
+  it('"Faces of October 7th" memorial exhibition is not nightlife, despite mentioning "the nova party"', () => {
+    const description = `StandWithUs, in partnership with graffiti artist Benzi Brofman
+September 23 – October 8, 2026
+10:00am-4:00pm
+StandWithUs Katz Education Center
+2 George Washington, Jerusalem
+You are invited to reflect and remember.
+Three years on, you are invited to reflect and remember the atrocities, massacres, and kidnappings of October 7th. This exhibition honors the victims of October 7th and provides a space for memorial, as we look back in sadness and look forward with unity and hope.
+A powerful and inspiring exhibition:
+The portraits and artwork are created by acclaimed Israeli graffiti artist Benzi Brofman. On October 6, 2023, Benzi was invited to paint live at a music festival in the Re'im parking lot in southern Israel. Contrary to his original plans, Benzi chose to return home that same day rather than stay until Saturday, October 7, 2023, avoiding tragedy by mere hours. Benzi has since devoted his art to commemorating the hostages, those who were murdered, and fallen IDF soldiers.
+Today, after all the hostages have been returned to Israel the works take on an additional layer of remembrance, pain, return, and hope.
+Often referred to as the Israeli "Banksy", Benzi has produced impactful art installations and murals across Israel, Europe, and beyond. The portraits in this exhibition were created with the support and collaboration of the families.
+The exhibition features:
+• Powerful portraits that come together to tell the deeply human story of October 7th. The portraits cover a wide range of people: those who were kidnapped to Gaza and returned alive; those who were kidnapped and buried; Civilians who went out to help the fugitives and were murdered; soldiers and commanders; celebrating at the nova party; And families whose lives were changed forever. It is a story of pain, heroism, loss, return and hope — a whole story that we must remember and not forget.
+• Powerful video and narration creating a moving environment to honor October 7th victims.
+• Interactive touchscreen display outlining the events of the October 7th massacre.
+• Opportunity to leave a personal message of remembrance.
+• Immersive and unique October 7th VR experience.
+This temporary exhibition has limited availability. Reserve your spot soon to experience it in person.
+Open to those living in and visiting Israel.`;
+    const category = classifySourceCategory({ title: "Faces of October 7th", description, host: "StandWithUs" });
+    expect(category).not.toBe("nightlife");
+    expect(category).toBe("attractions");
+    // Also confirm the new Exhibitions/Culture subcategory picks it up.
+    const text = `Faces of October 7th ${description}`.toLowerCase();
+    expect(classifySubcategory(category, text)).toBe("exhibition_culture");
+  });
+
+  // Real case, found via re-audit: this event genuinely relies on the bare
+  // "live at" pattern that was removed to fix the Faces of October 7th false
+  // positive above — removing it outright regressed this real concert to
+  // "attractions". Fixed by requiring "live at/in" to follow an invitation
+  // verb (catch/see/watch/join), which this text has and the October 7th
+  // backstory tangent ("invited to paint live at") does not.
+  it('"Inbal Wayne" live at Hoodna Bar is a concert, not attractions (regression from the October 7th fix)', () => {
     expect(
       classifySourceCategory({
-        title: "Faces of October 7th",
-        description: "StandWithUs, in partnership with graffiti artist Benzi Brofman",
-        host: "StandWithUs",
+        title: "Inbal Wayne",
+        description: "Catch Inbal Wayne live at Hoodna Bar 🎶",
+        host: "Secret Tel Aviv",
+      }),
+    ).toBe("concerts");
+  });
+
+  // Real case, FULL live description — the prior sprint's test used a
+  // paraphrase ("Tel Aviv International Salon presents a talk") that never
+  // contained the actual trigger, "Amcha Yisrael Party Chairman".
+  it('"INVITATION: Brig. General Ofer Winter..." speaker salon is not nightlife, despite "Amcha Yisrael Party Chairman"', () => {
+    const description = `"Leading Ideas, Leading Israel"
+
+
+
+
+Tel Aviv International Salon, presents: The Election Series
+Ofer Winter
+Brigadier General (ret.) & Amcha Yisrael Party Chairman
++ Candidates Yoseph Haddad & Fleur Hassan-Nahoum
+In-English Townhall + Q&A
+RSVP: Above on Eventbrite
+Cost: FREE
+Date: Monday Oct 5th, 2026, 7pm
+Venue: To Be Announced, Tel Aviv
+Who: Event open to all ages
+This event will be open to media. Press requests email: Info@TLVSalon.com`;
+    expect(
+      classifySourceCategory({
+        title: "INVITATION: Brig. General Ofer Winter & Amcha Yisrael, Mon Oct 5",
+        description,
+        host: "Tel Aviv International Salon",
       }),
     ).not.toBe("nightlife");
   });
 
-  it('"INVITATION: Brig. General Ofer Winter..." speaker salon (was nightlife — clearly wrong)', () => {
+  it('a genuine political-party mention elsewhere ("party leader") still does not trigger nightlife on its own', () => {
     expect(
       classifySourceCategory({
-        title: "INVITATION: Brig. General Ofer Winter & Amcha Yisrael",
-        description: "Leading Ideas, Leading Israel. Tel Aviv International Salon presents a talk.",
-        host: "Tel Aviv International Salon",
+        title: "Election Night Analysis",
+        description: "Join us as the opposition party leader discusses the results.",
       }),
     ).not.toBe("nightlife");
   });
@@ -185,6 +252,121 @@ describe("classifySourceCategory — real misclassifications found in the audit"
         sourceCategoryTags: ["Shabbat Meals & Activities"],
       }),
     ).toBe("jewish");
+  });
+});
+
+describe("classifySourceCategory — curated secondary native tags (added from the taxonomy audit)", () => {
+  it("NBN's Lectures & Workshops tag maps to workshops", () => {
+    expect(classifySourceCategory({ title: "Some Talk", sourceCategoryTags: ["Lectures & Workshops"] })).toBe("workshops");
+  });
+
+  it("NBN's Health & Wellness tag maps to wellness", () => {
+    expect(classifySourceCategory({ title: "Some Session", sourceCategoryTags: ["Health & Wellness"] })).toBe("wellness");
+  });
+
+  it("NBN's Ulpan/Language Exchange tag maps to workshops", () => {
+    expect(classifySourceCategory({ title: "Hebrew Practice", sourceCategoryTags: ["Ulpan/Language Exchange"] })).toBe(
+      "workshops",
+    );
+  });
+
+  it("a secondary tag never overrides explicit religious-practice text — real case: 'Sukkot Yom Iyun at Pardes'", () => {
+    // Real native tags on this event include "Education in Israel" (deliberately
+    // NOT in SECONDARY_SOURCE_TAGS — too vague per the audit). Even if it also
+    // carried a curated tag like Lectures & Workshops, explicit Torah-study
+    // language must still win.
+    expect(
+      classifySourceCategory({
+        title: "Sukkot Yom Iyun at Pardes",
+        description: "A day of learning with the Pardes Beit Midrash community.",
+        sourceCategoryTags: ["Lectures & Workshops", "Education in Israel"],
+      }),
+    ).toBe("jewish");
+  });
+
+  it("does not add the vague natives the audit found unreliable (Arts/Creativity, Masorti/Conservative Community)", () => {
+    // Real case, full description — "The Next Pour" was deliberately fixed
+    // jewish -> food in a prior sprint (Chol HaMoed alone isn't a reliable
+    // religious signal). Its real native tags include "Masorti/Conservative
+    // Community" — if that were trusted, this fix would silently regress.
+    expect(
+      classifySourceCategory({
+        title: "The Next Pour: An Evening at Jerusalem Brewing Co. for The Next Step",
+        description:
+          "Join The Next Step for an evening of good beer, good company, and good cause. On Wednesday, September 30th at 7:30pm, we're taking over Jerusalem Brewing for a night of unlimited beer, games, music, and a tour of the brewery. Every ticket and every sponsorship goes directly toward making sure members of our amputee community can join this event.",
+        sourceCategoryTags: ["Masorti/Conservative Community", "Chol HaMoed / Holidays", "Networking"],
+      }),
+    ).toBe("food");
+  });
+});
+
+describe("classifySourceCategory — party/parties false positives fixed by this audit", () => {
+  it('real case: Hawaii photography exhibition is not nightlife, despite mentioning "party"', () => {
+    const category = classifySourceCategory({
+      title: "Hawaii Tel Aviv - An exhibition of nature and surfing photography from around the world",
+      description: "Hawaii-themed photography exhibition and party in Tel Aviv 🎨",
+      host: "Secret Tel Aviv",
+    });
+    expect(category).not.toBe("nightlife");
+    expect(category).toBe("attractions");
+  });
+
+  it('real case: "Frisson Trio Birthday Party" is a concert (a named musical trio), not nightlife', () => {
+    expect(
+      classifySourceCategory({
+        title: "Frisson Trio Birthday Party",
+        description: "Join Frisson Trio for an exclusive birthday celebration 🎉",
+        host: "Secret Tel Aviv",
+      }),
+    ).toBe("concerts");
+  });
+
+  it("a genuine club/party event still classifies as nightlife — the fix did not delete party detection", () => {
+    expect(
+      classifySourceCategory({ title: "Saturday Night Party", description: "The best club night in town, DJ till 4am." }),
+    ).toBe("nightlife");
+    expect(classifySourceCategory({ title: "Rooftop Party", description: "Rooftop party with drinks and dancing." })).toBe(
+      "nightlife",
+    );
+  });
+});
+
+describe("classifySubcategory — Exhibitions / Culture (new, under Activities)", () => {
+  it('real case: Hawaii exhibition gets the exhibition_culture subcategory, still under Activities', () => {
+    const text = "hawaii tel aviv - an exhibition of nature and surfing photography from around the world hawaii-themed photography exhibition and party in tel aviv";
+    expect(classifySubcategory("attractions", text)).toBe("exhibition_culture");
+  });
+
+  it("only fires under the attractions fallback, never overriding a more specific category", () => {
+    expect(classifySubcategory("nightlife", "a wild exhibition of dance and light")).toBeNull();
+    expect(classifySubcategory("jewish", "an exhibition of Jewish art, shabbat included")).toBeNull();
+  });
+
+  it("does not fire for generic attractions text with no exhibition/culture signal", () => {
+    expect(classifySubcategory("attractions", "trivia and magnet making")).toBeNull();
+  });
+});
+
+describe("deriveTags — Clubs (new, narrow — never inferred from generic nightlife)", () => {
+  it('"club night" and "nightclub" earn the clubs tag', () => {
+    expect(deriveTags({ title: "Thursday Club Night", description: "The city's best club night." }, "nightlife", null)).toContain(
+      "clubs",
+    );
+    expect(deriveTags({ title: "Rafi Nightclub", description: "Join us at the nightclub." }, "nightlife", null)).toContain(
+      "clubs",
+    );
+  });
+
+  it("a bare 'club' (e.g. a book club) does not earn the clubs tag", () => {
+    expect(deriveTags({ title: "Monthly Book Club", description: "Discuss this month's novel." }, "attractions", null)).not.toContain(
+      "clubs",
+    );
+  });
+
+  it("generic nightlife text with no explicit club wording does not earn the clubs tag", () => {
+    expect(deriveTags({ title: "Disco Halal Takeover", description: "Disco takeover this Thursday." }, "nightlife", null)).not.toContain(
+      "clubs",
+    );
   });
 });
 

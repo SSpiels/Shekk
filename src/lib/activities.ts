@@ -100,12 +100,13 @@ export function matchesSubcategory(a: Pick<ActivityLike, "subcategory">, subcate
  * the classifier module) so both the classifier and browser-safe UI code
  * such as the Filters panel can use it without a server import.
  */
-export type EventSubcategory = "pub_crawl" | "friday_night_dinner" | "holiday_event";
+export type EventSubcategory = "pub_crawl" | "friday_night_dinner" | "holiday_event" | "exhibition_culture";
 
 export const SUBCATEGORY_LABEL: Record<EventSubcategory, string> = {
   pub_crawl: "Pub crawl",
   friday_night_dinner: "Friday night dinner",
   holiday_event: "Holiday event",
+  exhibition_culture: "Exhibitions / Culture",
 };
 
 /**
@@ -120,6 +121,7 @@ export const SUBCATEGORY_LABEL: Record<EventSubcategory, string> = {
 export type EventTag =
   | "nightlife"
   | "bars"
+  | "clubs"
   | "cocktails"
   | "dj_set"
   | "live_music"
@@ -139,6 +141,7 @@ export type EventTag =
 export const TAG_LABEL: Record<EventTag, string> = {
   nightlife: "Nightlife",
   bars: "Bars",
+  clubs: "Clubs",
   cocktails: "Cocktails",
   dj_set: "DJ set",
   live_music: "Live music",
@@ -268,6 +271,7 @@ export function matchesFilterOption(a: Pick<ActivityLike, "tags" | "subcategory"
 export const CATEGORY_TYPE_OPTIONS: Partial<Record<DiscoveryCategory, FilterOption[]>> = {
   nightlife: [
     { id: "bars", label: "Bars", kind: "tag" },
+    { id: "clubs", label: "Clubs", kind: "tag" },
     { id: "pub_crawl", label: "Pub crawl", kind: "subcategory" },
     { id: "dj_set", label: "DJ set", kind: "tag" },
   ],
@@ -279,6 +283,7 @@ export const CATEGORY_TYPE_OPTIONS: Partial<Record<DiscoveryCategory, FilterOpti
     { id: "wellness", label: "Wellness", kind: "tag" },
     { id: "food", label: "Food", kind: "tag" },
     { id: "markets", label: "Markets", kind: "tag" },
+    { id: "exhibition_culture", label: "Exhibitions / Culture", kind: "subcategory" },
   ],
   jewish: [
     { id: "friday_night_dinner", label: "Friday night dinner", kind: "subcategory" },

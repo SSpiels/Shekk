@@ -418,6 +418,7 @@ export type Database = {
           provider_ref: string | null
           refund_summary: string | null
           source_category: string | null
+          source_tags: string[]
           starts_at: string
           status: string
           subcategory: string | null
@@ -460,6 +461,7 @@ export type Database = {
           provider_ref?: string | null
           refund_summary?: string | null
           source_category?: string | null
+          source_tags?: string[]
           starts_at: string
           status?: string
           subcategory?: string | null
@@ -502,6 +504,7 @@ export type Database = {
           provider_ref?: string | null
           refund_summary?: string | null
           source_category?: string | null
+          source_tags?: string[]
           starts_at?: string
           status?: string
           subcategory?: string | null
