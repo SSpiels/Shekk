@@ -199,9 +199,10 @@ export type DiscoveryCategory = "all" | "nightlife" | "concerts" | "activities" 
 export const DISCOVERY_LABEL: Record<DiscoveryCategory, string> = {
   all: "All",
   nightlife: "Nightlife",
-  concerts: "Concerts",
+  /** The underlying enum key stays "concerts" (smallest safe change — no ripple through matchesDiscovery/DISCOVERY_GROUPS/tests); only the user-facing label changed to cover comedy/performances too. */
+  concerts: "Music & Shows",
   activities: "Activities",
-  jewish: "Jewish · Shabbat",
+  jewish: "Jewish / Shabbat",
   programme: "My Programme",
 };
 
@@ -223,11 +224,20 @@ const DISCOVERY_GROUPS: Record<Exclude<DiscoveryCategory, "all">, ActivityCatego
 };
 
 export function matchesDiscovery(a: ActivityLike, discovery: DiscoveryCategory): boolean {
-  return discovery === "all" || DISCOVERY_GROUPS[discovery].includes(categoryOf(a));
+  return discovery === "all" || discoveryOf(categoryOf(a), a.tags) === discovery;
 }
 
-/** The discovery group an activity's underlying category belongs to — for showing its chip label on a card. */
-export function discoveryOf(category: ActivityCategory): Exclude<DiscoveryCategory, "all"> {
+/**
+ * The discovery group an activity belongs under — for the WHAT chip row and
+ * an activity card's badge. Almost always a pure function of category, with
+ * one deliberate exception: a "comedy" tag always means Music & Shows,
+ * regardless of primary category (comedy shows have no dedicated
+ * `ActivityCategory` of their own and land under the generic "attractions"
+ * fallback — the tag is the only place that signal lives). Every event
+ * belongs to exactly one discovery group, never more than one.
+ */
+export function discoveryOf(category: ActivityCategory, tags: string[] = []): Exclude<DiscoveryCategory, "all"> {
+  if (category !== "programme" && tags.includes("comedy")) return "concerts";
   for (const [discovery, members] of Object.entries(DISCOVERY_GROUPS) as [
     Exclude<DiscoveryCategory, "all">,
     ActivityCategory[],
@@ -236,6 +246,57 @@ export function discoveryOf(category: ActivityCategory): Exclude<DiscoveryCatego
   }
   return "activities";
 }
+
+/* ------------------------------------------------------- contextual filters --- */
+
+export type FilterOption = { id: string; label: string; kind: "tag" | "subcategory" };
+
+export function matchesFilterOption(a: Pick<ActivityLike, "tags" | "subcategory">, opt: FilterOption): boolean {
+  return opt.kind === "tag" ? a.tags.includes(opt.id) : a.subcategory === opt.id;
+}
+
+/**
+ * Curated per-category "Type" breakdown — deliberately NOT every tag or
+ * subcategory that exists (see `lib/events-classification.ts` for the full
+ * vocabulary). Each entry here is still hidden at render time unless at
+ * least one currently-upcoming event actually matches it — this list is the
+ * ceiling, not a promise every option shows. "All" and "programme" have no
+ * curated Type breakdown: a primary category must be picked for Type to
+ * mean anything, and My Programme's own secondary filters (if any) come
+ * from the programme data itself, not this list.
+ */
+export const CATEGORY_TYPE_OPTIONS: Partial<Record<DiscoveryCategory, FilterOption[]>> = {
+  nightlife: [
+    { id: "bars", label: "Bars", kind: "tag" },
+    { id: "pub_crawl", label: "Pub crawl", kind: "subcategory" },
+    { id: "dj_set", label: "DJ set", kind: "tag" },
+  ],
+  concerts: [{ id: "comedy", label: "Comedy", kind: "tag" }],
+  activities: [
+    { id: "sport", label: "Sport", kind: "tag" },
+    { id: "outdoors", label: "Outdoors", kind: "tag" },
+    { id: "workshops", label: "Workshops", kind: "tag" },
+    { id: "wellness", label: "Wellness", kind: "tag" },
+    { id: "food", label: "Food", kind: "tag" },
+    { id: "markets", label: "Markets", kind: "tag" },
+  ],
+  jewish: [
+    { id: "friday_night_dinner", label: "Friday night dinner", kind: "subcategory" },
+    { id: "holiday_event", label: "Holiday event", kind: "subcategory" },
+  ],
+};
+
+/**
+ * Cross-cutting "who is this for / what's the vibe" filters — kept separate
+ * from Type so the same option can apply under any primary category. Also
+ * hidden at render time unless the current dataset actually has a match.
+ */
+export const VIBE_OPTIONS: FilterOption[] = [
+  { id: "social", label: "Social", kind: "tag" },
+  { id: "young_professionals", label: "Young Professionals", kind: "tag" },
+  { id: "community", label: "Community", kind: "tag" },
+  { id: "group_activity", label: "Group activity", kind: "tag" },
+];
 
 /* ---------------------------------------------------------------------- dates --- */
 

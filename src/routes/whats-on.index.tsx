@@ -6,22 +6,22 @@ import { ErrorState } from "@/components/Kit";
 import { dayLabel, eventWhen, useEvents, useMyTickets } from "@/lib/useEvents";
 import { ils } from "@/lib/mock";
 import {
+  CATEGORY_TYPE_OPTIONS,
   DISCOVERY_LABEL,
   DISCOVERY_ORDER,
   EVENING_HOUR,
-  SUBCATEGORY_LABEL,
-  TAG_LABEL,
+  VIBE_OPTIONS,
   categoryOf,
   discoveryOf,
   groupByDay,
   matchesDate,
   matchesDiscovery,
+  matchesFilterOption,
   matchesPrice,
-  matchesSubcategory,
-  matchesTag,
   providerLabel,
   type DiscoveryCategory,
   type DateFilter,
+  type FilterOption,
   type PriceFilter,
 } from "@/lib/activities";
 import { track } from "@/lib/analytics";
@@ -56,7 +56,17 @@ function isEveningNow(now: Date): boolean {
 const TEL_AVIV = "Tel Aviv";
 const JERUSALEM = "Jerusalem";
 
-type MoreOption = { id: string; label: string; kind: "tag" | "subcategory" };
+function toggleInSet(set: Set<string>, id: string): Set<string> {
+  const next = new Set(set);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  return next;
+}
+
+/** Only the options that actually have a match in `pool` — never show a filter with nothing behind it. */
+function evidencedOptions(pool: { tags: string[]; subcategory: string | null }[], options: FilterOption[]): FilterOption[] {
+  return options.filter((opt) => pool.some((a) => matchesFilterOption(a, opt)));
+}
 
 function WhatsOnScreen() {
   const { data, isLoading, error, refetch } = useEvents();
@@ -65,71 +75,62 @@ function WhatsOnScreen() {
   const [dateFilter, setDateFilter] = useState<DateFilter>("any");
   const [pickedDate, setPickedDate] = useState<string>("");
   const [category, setCategory] = useState<DiscoveryCategory>("all");
-  const [city, setCity] = useState<string | null>(null);
+  const [locations, setLocations] = useState<Set<string>>(new Set());
   const [otherCitiesOpen, setOtherCitiesOpen] = useState(false);
   const [priceFilter, setPriceFilter] = useState<PriceFilter | null>(null);
-  const [more, setMore] = useState<string | null>(null);
+  const [types, setTypes] = useState<Set<string>>(new Set());
+  const [vibes, setVibes] = useState<Set<string>>(new Set());
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const activities = data ?? [];
 
+  // WHEN + WHAT only — every Filters option below is computed from this, so
+  // Location/Price/Type/Vibe only ever offer choices that mean something
+  // for what's actually on right now, not the whole catalogue.
+  const inScope = useMemo(() => {
+    const effectiveDate: DateFilter = pickedDate ? "date" : dateFilter;
+    return activities.filter(
+      (a) => matchesDate(a.startsAt, effectiveDate, { pickedDate: pickedDate || null }) && matchesDiscovery(a, category),
+    );
+  }, [activities, dateFilter, pickedDate, category]);
+
   const otherCities = useMemo(
-    () =>
-      [...new Set(activities.map((a) => a.city).filter((c): c is string => Boolean(c) && c !== TEL_AVIV && c !== JERUSALEM))].sort(),
-    [activities],
+    () => [...new Set(inScope.map((a) => a.city).filter((c): c is string => Boolean(c) && c !== TEL_AVIV && c !== JERUSALEM))].sort(),
+    [inScope],
   );
-  const hasTlv = useMemo(() => activities.some((a) => a.city === TEL_AVIV), [activities]);
-  const hasJerusalem = useMemo(() => activities.some((a) => a.city === JERUSALEM), [activities]);
+  const hasTlv = useMemo(() => inScope.some((a) => a.city === TEL_AVIV), [inScope]);
+  const hasJerusalem = useMemo(() => inScope.some((a) => a.city === JERUSALEM), [inScope]);
 
   const priceBuckets = useMemo(
     () => ({
-      free: activities.some((a) => a.price === 0),
-      paid: activities.some((a) => a.price !== null && a.price > 0),
-      unknown: activities.some((a) => a.price === null),
+      free: inScope.some((a) => a.price === 0),
+      paid: inScope.some((a) => a.price !== null && a.price > 0),
+      unknown: inScope.some((a) => a.price === null),
     }),
-    [activities],
+    [inScope],
   );
+  // A single populated bucket has no discriminating power — everything already matches it.
+  const showPriceGroup = [priceBuckets.free, priceBuckets.paid, priceBuckets.unknown].filter(Boolean).length > 1;
 
-  /**
-   * Only surfaces tags/subcategories that actually occur in the current
-   * dataset — an empty option would be a dead end. The "nightlife" tag is
-   * deliberately excluded here even though it's a real, derived value: its
-   * label would duplicate the primary "Nightlife" WHAT chip already shown
-   * above the Filters panel.
-   */
-  const moreOptions = useMemo<MoreOption[]>(() => {
-    const counts = new Map<string, number>();
-    for (const a of activities) {
-      for (const tag of a.tags) if (tag !== "nightlife") counts.set(`tag:${tag}`, (counts.get(`tag:${tag}`) ?? 0) + 1);
-      if (a.subcategory) counts.set(`sub:${a.subcategory}`, (counts.get(`sub:${a.subcategory}`) ?? 0) + 1);
-    }
-    const opts: (MoreOption & { count: number })[] = [];
-    for (const [key, count] of counts) {
-      const [kind, id] = key.split(":") as ["tag" | "subcategory", string];
-      const label =
-        kind === "tag"
-          ? (TAG_LABEL as Record<string, string>)[id]
-          : (SUBCATEGORY_LABEL as Record<string, string>)[id];
-      if (label) opts.push({ id, label, kind: kind === "tag" ? "tag" : "subcategory", count });
-    }
-    opts.sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-    return opts;
-  }, [activities]);
+  const typeOptions = useMemo(
+    () => evidencedOptions(inScope, CATEGORY_TYPE_OPTIONS[category] ?? []),
+    [inScope, category],
+  );
+  const typeOptionMap = useMemo(() => new Map(typeOptions.map((o) => [o.id, o])), [typeOptions]);
+
+  const vibeOptions = useMemo(() => evidencedOptions(inScope, VIBE_OPTIONS), [inScope]);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const effectiveDate: DateFilter = pickedDate ? "date" : dateFilter;
-    const moreOpt = more ? moreOptions.find((o) => o.id === more) : null;
-    return activities.filter((a) => {
-      if (!matchesDate(a.startsAt, effectiveDate, { pickedDate: pickedDate || null })) return false;
-      if (!matchesDiscovery(a, category)) return false;
-      if (city && a.city !== city) return false;
+    return inScope.filter((a) => {
+      if (locations.size > 0 && !(a.city && locations.has(a.city))) return false;
       if (priceFilter && !matchesPrice(a, priceFilter)) return false;
-      if (moreOpt && !(moreOpt.kind === "tag" ? matchesTag(a, moreOpt.id) : matchesSubcategory(a, moreOpt.id))) return false;
+      if (types.size > 0 && ![...types].some((id) => { const opt = typeOptionMap.get(id); return opt && matchesFilterOption(a, opt); })) return false;
+      if (vibes.size > 0 && ![...vibes].some((id) => a.tags.includes(id))) return false;
       if (q && ![a.title, a.host, a.venue ?? "", a.city ?? ""].join(" ").toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [activities, query, dateFilter, pickedDate, category, city, priceFilter, more, moreOptions]);
+  }, [inScope, query, locations, priceFilter, types, typeOptionMap, vibes]);
 
   const groups = useMemo(() => groupByDay(shown), [shown]);
 
@@ -137,7 +138,7 @@ function WhatsOnScreen() {
     if (shown.length > 0) track("activity_impression", { count: shown.length, category, date: dateFilter });
   }, [shown.length, category, dateFilter]);
 
-  const secondaryFilterCount = (city ? 1 : 0) + (priceFilter ? 1 : 0) + (more ? 1 : 0);
+  const secondaryFilterCount = locations.size + (priceFilter ? 1 : 0) + types.size + vibes.size;
   const filtering = Boolean(query.trim()) || dateFilter !== "any" || Boolean(pickedDate) || category !== "all" || secondaryFilterCount > 0;
 
   const clearFilters = () => {
@@ -145,10 +146,11 @@ function WhatsOnScreen() {
     setDateFilter("any");
     setPickedDate("");
     setCategory("all");
-    setCity(null);
+    setLocations(new Set());
     setOtherCitiesOpen(false);
     setPriceFilter(null);
-    setMore(null);
+    setTypes(new Set());
+    setVibes(new Set());
   };
 
   const toggleDate = (id: DateFilter) => {
@@ -156,9 +158,23 @@ function WhatsOnScreen() {
     setDateFilter((cur) => (cur === id ? "any" : id));
   };
 
-  const toggleCity = (c: string) => setCity((cur) => (cur === c ? null : c));
+  // "Narrow it down" is scoped to the current WHAT — switching it resets every
+  // contextual filter, not just Type. Without this, a Location/Vibe pick made
+  // under one category can silently keep filtering an unrelated category (the
+  // panel may show no matching chips to explain why results are empty).
+  const switchCategory = (c: DiscoveryCategory) => {
+    setCategory((cur) => (cur === c ? "all" : c));
+    setLocations(new Set());
+    setOtherCitiesOpen(false);
+    setPriceFilter(null);
+    setTypes(new Set());
+    setVibes(new Set());
+  };
+
+  const toggleLocation = (c: string) => setLocations((cur) => toggleInSet(cur, c));
   const togglePrice = (p: PriceFilter) => setPriceFilter((cur) => (cur === p ? null : p));
-  const toggleMore = (id: string) => setMore((cur) => (cur === id ? null : id));
+  const toggleType = (id: string) => setTypes((cur) => toggleInSet(cur, id));
+  const toggleVibe = (id: string) => setVibes((cur) => toggleInSet(cur, id));
 
   const evening = isEveningNow(new Date());
   const primaryWhen: DateFilter = evening ? "tonight" : "today";
@@ -221,7 +237,7 @@ function WhatsOnScreen() {
         {/* WHAT — what do I want to do? Visually distinct from WHEN: rounded-full tags vs rounded-xl controls. */}
         <div className="flex flex-wrap gap-1.5">
           {DISCOVERY_ORDER.filter((c) => c !== "all").map((c) => (
-            <Chip key={c} active={category === c} onClick={() => setCategory((cur) => (cur === c ? "all" : c))}>
+            <Chip key={c} active={category === c} onClick={() => switchCategory(c)}>
               {DISCOVERY_LABEL[c]}
             </Chip>
           ))}
@@ -243,39 +259,38 @@ function WhatsOnScreen() {
 
         {filtersOpen && (
           <div className="space-y-2.5 rounded-2xl bg-muted/60 p-3">
+            <p className="px-0.5 text-xs font-semibold text-muted-foreground">Narrow it down</p>
+
             {(hasTlv || hasJerusalem || otherCities.length > 0) && (
               <FilterGroup label="Location">
                 {hasTlv && (
-                  <Chip active={city === TEL_AVIV} onClick={() => toggleCity(TEL_AVIV)}>
+                  <Chip active={locations.has(TEL_AVIV)} onClick={() => toggleLocation(TEL_AVIV)}>
                     Tel Aviv
                   </Chip>
                 )}
                 {hasJerusalem && (
-                  <Chip active={city === JERUSALEM} onClick={() => toggleCity(JERUSALEM)}>
+                  <Chip active={locations.has(JERUSALEM)} onClick={() => toggleLocation(JERUSALEM)}>
                     Jerusalem
                   </Chip>
                 )}
                 {otherCities.length > 0 && (
                   <Chip
-                    active={otherCitiesOpen || (city !== null && city !== TEL_AVIV && city !== JERUSALEM)}
+                    active={otherCitiesOpen || otherCities.some((c) => locations.has(c))}
                     onClick={() => setOtherCitiesOpen((v) => !v)}
                   >
                     Other
                   </Chip>
                 )}
+                {otherCitiesOpen &&
+                  otherCities.map((c) => (
+                    <Chip key={c} active={locations.has(c)} onClick={() => toggleLocation(c)}>
+                      {c}
+                    </Chip>
+                  ))}
               </FilterGroup>
             )}
-            {otherCitiesOpen && otherCities.length > 0 && (
-              <div className="scrollbar-none -mx-1 flex gap-2 overflow-x-auto px-1 pl-6">
-                {otherCities.map((c) => (
-                  <Chip key={c} active={city === c} onClick={() => toggleCity(c)}>
-                    {c}
-                  </Chip>
-                ))}
-              </div>
-            )}
 
-            {(priceBuckets.free || priceBuckets.paid || priceBuckets.unknown) && (
+            {showPriceGroup && (
               <FilterGroup label="Price">
                 {priceBuckets.free && (
                   <Chip active={priceFilter === "free"} onClick={() => togglePrice("free")}>
@@ -295,10 +310,20 @@ function WhatsOnScreen() {
               </FilterGroup>
             )}
 
-            {moreOptions.length > 0 && (
-              <FilterGroup label="More">
-                {moreOptions.map((o) => (
-                  <Chip key={o.id} active={more === o.id} onClick={() => toggleMore(o.id)}>
+            {typeOptions.length > 0 && (
+              <FilterGroup label="Type">
+                {typeOptions.map((o) => (
+                  <Chip key={o.id} active={types.has(o.id)} onClick={() => toggleType(o.id)}>
+                    {o.label}
+                  </Chip>
+                ))}
+              </FilterGroup>
+            )}
+
+            {vibeOptions.length > 0 && (
+              <FilterGroup label="Vibe">
+                {vibeOptions.map((o) => (
+                  <Chip key={o.id} active={vibes.has(o.id)} onClick={() => toggleVibe(o.id)}>
                     {o.label}
                   </Chip>
                 ))}
@@ -443,7 +468,7 @@ function ActivityCard({ activity: a, compact }: { activity: Activity; compact: b
             {attribution && !programme ? ` · via ${attribution}` : ""}
           </p>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <Tag>{DISCOVERY_LABEL[discoveryOf(cat)]}</Tag>
+            <Tag>{DISCOVERY_LABEL[discoveryOf(cat, a.tags)]}</Tag>
             {programme ? (
               <Tag tone="primary">
                 {a.programmeStatus === "programme_included" ? "Included in your programme" : "Programme activity"}

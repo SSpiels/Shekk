@@ -3,9 +3,11 @@ import {
   bookingCta,
   bookingMode,
   categoryOf,
+  discoveryOf,
   groupByDay,
   matchesDate,
   matchesDiscovery,
+  matchesFilterOption,
   weekendWindow,
   type ActivityLike,
 } from "./activities";
@@ -179,6 +181,57 @@ describe("matchesDiscovery", () => {
 
   it("All matches everything", () => {
     expect(matchesDiscovery({ ...base, sourceCategory: "jewish" }, "all")).toBe(true);
+  });
+
+  // Real case: "Comedy Show Chol Hamoed In Efrat" classifies as the generic
+  // "attractions" fallback (no dedicated ActivityCategory for comedy) but
+  // carries a "comedy" tag — that tag is the only signal that it belongs
+  // under Music & Shows, not Activities.
+  it("routes a comedy-tagged attractions event to Music & Shows, not Activities", () => {
+    const comedyShow = { ...base, sourceCategory: "attractions", tags: ["comedy"] };
+    expect(matchesDiscovery(comedyShow, "concerts")).toBe(true);
+    expect(matchesDiscovery(comedyShow, "activities")).toBe(false);
+  });
+
+  it("a comedy tag never overrides My Programme — programme events stay grouped there", () => {
+    expect(
+      matchesDiscovery(
+        { ...base, sourceCategory: "attractions", tags: ["comedy"], programmeStatus: "programme_included" },
+        "programme",
+      ),
+    ).toBe(true);
+  });
+});
+
+describe("discoveryOf", () => {
+  it("mirrors matchesDiscovery's comedy-tag override", () => {
+    expect(discoveryOf("attractions", ["comedy"])).toBe("concerts");
+    expect(discoveryOf("attractions", [])).toBe("activities");
+    expect(discoveryOf("nightlife")).toBe("nightlife");
+  });
+});
+
+describe("matchesFilterOption", () => {
+  it("matches a tag-kind option by tag membership", () => {
+    expect(matchesFilterOption({ tags: ["bars", "social"], subcategory: null }, { id: "bars", label: "Bars", kind: "tag" })).toBe(
+      true,
+    );
+    expect(matchesFilterOption({ tags: ["social"], subcategory: null }, { id: "bars", label: "Bars", kind: "tag" })).toBe(false);
+  });
+
+  it("matches a subcategory-kind option by exact subcategory", () => {
+    expect(
+      matchesFilterOption(
+        { tags: [], subcategory: "pub_crawl" },
+        { id: "pub_crawl", label: "Pub crawl", kind: "subcategory" },
+      ),
+    ).toBe(true);
+    expect(
+      matchesFilterOption(
+        { tags: [], subcategory: "holiday_event" },
+        { id: "pub_crawl", label: "Pub crawl", kind: "subcategory" },
+      ),
+    ).toBe(false);
   });
 });
 
