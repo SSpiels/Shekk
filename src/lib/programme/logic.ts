@@ -1547,7 +1547,7 @@ export function pendingActions(hub: ProgrammeHub, now = Date.now()): PendingActi
       key: `checklist:${i.id}`,
       kind: "checklist" as const,
       title: i.title,
-      detail: i.dueOn ? `Due ${i.dueOn}` : "Before you fly",
+      detail: i.dueOn ? `Due ${fmtDateOnly(i.dueOn)}` : "Before you fly",
       urgent: false,
       itemId: i.id,
     }));
