@@ -216,7 +216,7 @@ function daysFromToday(iso: string) {
 function Setup() {
   const navigate = useNavigate();
   const { state, completeOnboarding } = useApp();
-  const { travel, loading, fetched, save } = useTravel();
+  const { travel, loading, fetched, failed, refetch, save } = useTravel();
   const { join, joined, programme } = useProgramme();
 
   const [step, setStep] = useState<StepId | null>(null);
@@ -260,6 +260,12 @@ function Setup() {
   );
   const index = Math.max(0, flow.findIndex((s) => s.id === step));
   const chapter = flow[index]?.chapter ?? "";
+
+  // A permanently failed load must never leave someone staring at a spinner
+  // forever — give them a way to retry or carry on into the app instead.
+  if (failed && step === null) {
+    return <SetupLoadError onRetry={() => void refetch()} onSkip={() => void navigate({ to: "/" })} />;
+  }
 
   if (loading || step === null) return <Splash message="Picking up where you left off…" />;
 
@@ -720,6 +726,36 @@ function Setup() {
             Carry on with this later
           </button>
         ) : null}
+      </div>
+    </FocusScreen>
+  );
+}
+
+/** Shown when the saved-progress load fails and retries are exhausted — the
+ *  screen this replaces used to just spin forever with no way out. */
+function SetupLoadError({ onRetry, onSkip }: { onRetry: () => void; onSkip: () => void }) {
+  return (
+    <FocusScreen nav={false}>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-5 px-6 text-center">
+        <span className="flex size-14 items-center justify-center rounded-2xl bg-muted text-foreground/60">
+          <Compass className="size-6" />
+        </span>
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">We couldn't load your setup</h1>
+          <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
+            Check your connection and try again. Your answers so far are saved, so nothing is lost.
+          </p>
+        </div>
+        <div className="w-full max-w-xs space-y-2">
+          <PrimaryButton onClick={onRetry}>Try again</PrimaryButton>
+          <button
+            type="button"
+            onClick={onSkip}
+            className="tap block w-full text-center text-xs font-semibold text-muted-foreground underline"
+          >
+            Carry on with this later
+          </button>
+        </div>
       </div>
     </FocusScreen>
   );

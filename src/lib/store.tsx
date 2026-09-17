@@ -348,15 +348,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
      * read is confirmed against the auth server before we believe it.
      */
     const resolve = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!active) return;
-      if (data.session?.user?.id) {
-        sync(data.session.user.id);
-        return;
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (!active) return;
+        if (data.session?.user?.id) {
+          sync(data.session.user.id);
+          return;
+        }
+        const { data: userData } = await supabase.auth.getUser();
+        if (!active) return;
+        sync(userData.user?.id ?? null);
+      } catch {
+        // A thrown network/auth error here must never leave the app stuck
+        // behind the boot splash forever — fall back to signed-out and let
+        // the sign-in screen (or a retried session check) take it from there.
+        if (active) sync(null);
       }
-      const { data: userData } = await supabase.auth.getUser();
-      if (!active) return;
-      sync(userData.user?.id ?? null);
     };
 
     void resolve();

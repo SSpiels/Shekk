@@ -6,10 +6,9 @@ import { ils } from "@/lib/mock";
 import { refIn } from "@/lib/currencies";
 import { MembershipDunningBanner } from "@/components/MembershipDunningBanner";
 import { useUnreadChats } from "@/lib/useSocial";
-import { MiniAppSplash } from "@/components/MiniAppSplash";
-import { miniAppFor } from "@/lib/mini-apps";
 import { activeTabFor, keepsChrome, TAB_EXPLORE, TAB_PROGRAMME, TAB_TODAY, TAB_WHATS_ON, TAB_YOU } from "@/lib/nav";
 import { MONEY_ENABLED } from "@/lib/flags";
+import { miniAppFor } from "@/lib/mini-apps";
 
 
 
@@ -276,7 +275,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   /* Tab roots get the Shekk chrome. Anything deeper is a mini app or info page:
      no tab bar, no Shekk quick menu — it runs as its own little app. */
   const isTabRoot = keepsChrome(pathname);
-  const mini = isTabRoot ? null : miniAppFor(pathname);
   const standalone = !isTabRoot;
   const [hasHeader, setHasHeader] = useState(false);
 
@@ -334,7 +332,6 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
 
 
-            {mini ? <MiniAppSplash key={mini.id} app={mini} /> : null}
           </PhoneFrame>
 
         </div>

@@ -154,6 +154,8 @@ export function useTravel() {
     setupComplete: Boolean(travel.onboardingCompletedAt),
     loading: query.isLoading,
     fetched: query.isSuccess,
+    /** True once retries are exhausted and the load has permanently failed. */
+    failed: query.isError,
     save,
     refetch: query.refetch,
   };
