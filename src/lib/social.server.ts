@@ -176,7 +176,7 @@ type HandleRow = {
 
 export async function updateHandle(
   userId: string,
-  input: { handle?: string; displayName?: string; discoverable?: boolean },
+  input: { handle?: string; displayName?: string; discoverable?: boolean; avatarUrl?: string | null },
 ): Promise<MemberCard> {
   const db = await admin();
   await ensureHandle(userId);
@@ -186,6 +186,7 @@ export async function updateHandle(
     handle?: string;
     display_name?: string;
     discoverable?: boolean;
+    avatar_url?: string | null;
   } = { updated_at: new Date().toISOString() };
   if (input.handle != null) {
     const handle = normaliseHandle(input.handle);
@@ -202,6 +203,7 @@ export async function updateHandle(
   }
   if (input.displayName != null) patch.display_name = input.displayName.trim().slice(0, 60);
   if (input.discoverable != null) patch.discoverable = input.discoverable;
+  if (input.avatarUrl !== undefined) patch.avatar_url = input.avatarUrl;
 
   const { data, error } = await db
     .from("member_handles")

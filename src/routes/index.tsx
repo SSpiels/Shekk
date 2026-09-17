@@ -13,6 +13,7 @@ import { ForYou } from "@/components/ForYou";
 import { LocationBar } from "@/components/LocationBar";
 
 import { useApp } from "@/lib/store";
+import { useMyHandle } from "@/lib/useSocial";
 import { useProfile } from "@/lib/useProfile";
 import { useOnboardedGate } from "@/lib/useOnboardedGate";
 import { useSetup } from "@/lib/useSetup";
@@ -387,6 +388,7 @@ function HomeScreen() {
   const ready = useOnboardedGate();
   const { state } = useApp();
   const kycProfile = useProfile();
+  const { me: myHandle } = useMyHandle();
   const { travel } = useTravel();
   const promos = usePromotions("home");
   const recents = useRecentServices();
@@ -399,8 +401,12 @@ function HomeScreen() {
     );
   }
 
+  const handleFirstName =
+    myHandle?.displayName && myHandle.displayName !== "Shekk member"
+      ? myHandle.displayName.trim().split(" ")[0]
+      : "";
   const firstName =
-    (state.name?.trim().split(" ")[0] || kycProfile.profile?.legalFirstName?.trim().split(" ")[0] || "").trim();
+    (handleFirstName || state.name?.trim().split(" ")[0] || kycProfile.profile?.legalFirstName?.trim().split(" ")[0] || "").trim();
   const journey = getJourney(travel);
 
   return (

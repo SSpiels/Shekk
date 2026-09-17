@@ -31,6 +31,7 @@ export const saveMyHandle = createServerFn({ method: "POST" })
         handle: text(24).optional(),
         displayName: text(60).optional(),
         discoverable: z.boolean().optional(),
+        avatarUrl: text(80).nullable().optional(),
       })
       .parse(data),
   )

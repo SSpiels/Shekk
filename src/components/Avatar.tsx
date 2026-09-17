@@ -1,3 +1,5 @@
+import { avatarPreset } from "@/lib/avatars";
+
 export function initialsOf(name: string) {
   return name
     .split(" ")
@@ -18,6 +20,18 @@ export function Avatar({
   className?: string;
   textClassName?: string;
 }) {
+  const preset = avatarPreset(src);
+  if (preset) {
+    return (
+      <span
+        aria-hidden
+        className={`${className} ${textClassName} flex shrink-0 items-center justify-center rounded-full leading-none`}
+        style={{ backgroundImage: preset.grad }}
+      >
+        {preset.emoji}
+      </span>
+    );
+  }
   if (src) {
     return (
       <img

@@ -98,7 +98,7 @@ export function useMyHandle() {
   });
 
   const save = useMutation({
-    mutationFn: (input: { handle?: string; displayName?: string; discoverable?: boolean }) =>
+    mutationFn: (input: { handle?: string; displayName?: string; discoverable?: boolean; avatarUrl?: string | null }) =>
       saveMyHandle({ data: input }),
     onSuccess: (card) => {
       qc.setQueryData(socialKeys.handle, card);

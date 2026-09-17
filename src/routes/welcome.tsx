@@ -23,13 +23,18 @@ import {
   Loader2,
   MapPin,
   Plane,
+  Signal,
   ShieldCheck,
   Sparkles,
+  UserRound,
   Wallet,
 } from "lucide-react";
 import { FocusScreen, PrimaryButton } from "@/components/AppShell";
+import { Avatar } from "@/components/Avatar";
 import { Splash } from "@/components/Splash";
 import { useApp } from "@/lib/store";
+import { useMyHandle } from "@/lib/useSocial";
+import { AVATAR_PRESETS, avatarPresetId, avatarUrlFor } from "@/lib/avatars";
 import { LOCATION_CITIES } from "@/lib/location";
 import { CURRENCIES, type CurrencyCode } from "@/lib/currencies";
 import { useProgramme, useTravel } from "@/lib/useProgramme";
@@ -87,11 +92,13 @@ const AREAS = [
  * skipped for independents.
  */
 const STEPS = [
+  { id: "profile", chapter: "Your journey" },
   { id: "style", chapter: "Your journey" },
   { id: "code", chapter: "Your journey" },
   { id: "dates", chapter: "Planning your stay" },
   { id: "place", chapter: "Planning your stay" },
   { id: "focus", chapter: "Making it yours" },
+  { id: "esim", chapter: "Making it yours" },
   { id: "money", chapter: "Getting set up" },
   { id: "verify", chapter: "Getting set up" },
   { id: "done", chapter: "Ready" },
@@ -218,11 +225,14 @@ function Setup() {
   const { state, completeOnboarding } = useApp();
   const { travel, loading, fetched, failed, refetch, save } = useTravel();
   const { join, joined, programme } = useProgramme();
+  const { me: myHandle, save: saveHandle } = useMyHandle();
 
   const [step, setStep] = useState<StepId | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [displayName, setDisplayName] = useState("");
+  const [avatarId, setAvatarId] = useState<string | null>(null);
   const [style, setStyle] = useState<"programme" | "independent">("programme");
   const [code, setCode] = useState("");
   const [arrival, setArrival] = useState("");
@@ -236,6 +246,8 @@ function Setup() {
   /* Adopt whatever the server already knows, once. */
   useEffect(() => {
     if (!fetched || step !== null) return;
+    if (myHandle?.displayName && myHandle.displayName !== "Shekk member") setDisplayName(myHandle.displayName);
+    if (myHandle?.avatarUrl) setAvatarId(avatarPresetId(myHandle.avatarUrl));
     if (travel.travelStyle !== "unknown") setStyle(travel.travelStyle);
     if (travel.arrivalDate) setArrival(travel.arrivalDate);
     if (travel.departureDate) setDeparture(travel.departureDate);
@@ -245,8 +257,8 @@ function Setup() {
     if (travel.accommodationArea) setArea(travel.accommodationArea);
     if (travel.interests.length) setInterests(travel.interests as InterestId[]);
     const resumed = STEPS.find((s) => s.id === travel.onboardingStep)?.id;
-    setStep(travel.onboardingCompletedAt ? "done" : (resumed ?? "style"));
-  }, [fetched, step, travel]);
+    setStep(travel.onboardingCompletedAt ? "done" : (resumed ?? "profile"));
+  }, [fetched, step, travel, myHandle]);
 
   /** Independents never see the programme stage; nobody sees the money/KYC
    *  stages while MONEY_ENABLED is off — flipping that flag back on brings
@@ -290,6 +302,27 @@ function Setup() {
   async function forward() {
     setError(null);
     const nextStep = flow[Math.min(index + 1, flow.length - 1)].id;
+
+    if (step === "profile") {
+      setBusy(true);
+      try {
+        await saveHandle.mutateAsync({
+          displayName: displayName.trim() || undefined,
+          avatarUrl: avatarId ? avatarUrlFor(avatarId) : undefined,
+        });
+      } catch (e) {
+        setBusy(false);
+        setError(e instanceof Error ? e.message.replace(/^Error:\s*/, "") : "We couldn't save that just now.");
+        return;
+      }
+      const ok = await persist({
+        displayName: displayName.trim() || undefined,
+        onboardingStep: nextStep,
+      });
+      setBusy(false);
+      if (ok) goto(nextStep);
+      return;
+    }
 
     if (step === "style") {
       setBusy(true);
@@ -357,6 +390,14 @@ function Setup() {
       return;
     }
 
+    if (step === "esim") {
+      setBusy(true);
+      const ok = await persist({ onboardingStep: nextStep });
+      setBusy(false);
+      if (ok) goto(nextStep);
+      return;
+    }
+
     if (step === "money") {
       setBusy(true);
       const ok = await persist({
@@ -375,7 +416,7 @@ function Setup() {
       setBusy(false);
       if (!ok) return;
       completeOnboarding({
-        name: state.name,
+        name: displayName || state.name,
         programId: state.programId,
         cohort: state.cohort,
         homeCountry,
@@ -444,6 +485,52 @@ function Setup() {
       </header>
 
       <div key={step} className="animate-in fade-in slide-in-from-right-3 px-5 pt-5 duration-300">
+        {step === "profile" ? (
+          <Stage
+            icon={UserRound}
+            title="What should we call you?"
+            blurb="Your name and avatar show up on your home screen and to your programme — nothing else about you is shared."
+          >
+            <div className="flex justify-center">
+              <Avatar
+                name={displayName || "S"}
+                src={avatarId ? avatarUrlFor(avatarId) : null}
+                className="size-20"
+                textClassName="text-3xl"
+              />
+            </div>
+            <Field label="Your name">
+              <input
+                autoFocus
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="e.g. Sam"
+                maxLength={60}
+                className="w-full rounded-2xl bg-muted px-4 py-3.5 text-base outline-none"
+              />
+            </Field>
+            <Field label="Pick an avatar">
+              <div className="grid grid-cols-4 gap-2.5">
+                {AVATAR_PRESETS.map((a) => (
+                  <button
+                    key={a.id}
+                    type="button"
+                    aria-label={a.id}
+                    aria-pressed={avatarId === a.id}
+                    onClick={() => setAvatarId((v) => (v === a.id ? null : a.id))}
+                    className={`tap flex aspect-square items-center justify-center rounded-2xl text-2xl ${
+                      avatarId === a.id ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
+                    }`}
+                    style={{ backgroundImage: a.grad }}
+                  >
+                    {a.emoji}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          </Stage>
+        ) : null}
+
         {step === "style" ? (
           <Stage
             icon={Sparkles}
@@ -610,6 +697,40 @@ function Setup() {
           </Stage>
         ) : null}
 
+        {step === "esim" ? (
+          <Stage
+            icon={Signal}
+            title="Get connected before you land"
+            blurb="An eSIM installs before you fly and switches on the moment you land, so you can message home and order a taxi straight from arrivals."
+          >
+            <ul className="space-y-2.5">
+              {[
+                "Install it at home on Wi-Fi, before you fly",
+                "Switches on the moment you land — no hunting for wifi",
+                "Answer three questions and Shekk finds the plan that fits your stay",
+              ].map((t) => (
+                <li key={t} className="flex items-start gap-2.5 text-sm">
+                  <Check className="mt-0.5 size-4 shrink-0 text-success" />
+                  <span className="text-muted-foreground">{t}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-card">
+              <p className="text-sm font-semibold">Takes about two minutes</p>
+              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                We'll ask how long you're staying, whether you need an Israeli number and how much data you use,
+                then point you at the right plan.
+              </p>
+              <Link
+                to="/services/esim"
+                className="tap mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground"
+              >
+                Find my SIM <ArrowRight className="size-4" />
+              </Link>
+            </div>
+          </Stage>
+        ) : null}
+
         {step === "money" ? (
           <Stage
             icon={Wallet}
@@ -709,6 +830,8 @@ function Setup() {
           ) : step === "verify" ? (
             "I'll do this later — finish setting up"
           ) : step === "focus" && interests.length === 0 ? (
+            "Skip for now"
+          ) : step === "profile" && !displayName.trim() ? (
             "Skip for now"
           ) : step === "code" && !joined && code.trim().length < 3 ? (
             "I don't have a code yet"
