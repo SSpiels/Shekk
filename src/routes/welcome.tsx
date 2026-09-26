@@ -504,7 +504,7 @@ function Setup() {
                 autoFocus
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="e.g. Sam"
+                placeholder="e.g. Jordan"
                 maxLength={60}
                 className="w-full rounded-2xl bg-muted px-4 py-3.5 text-base outline-none"
               />
@@ -518,12 +518,12 @@ function Setup() {
                     aria-label={a.id}
                     aria-pressed={avatarId === a.id}
                     onClick={() => setAvatarId((v) => (v === a.id ? null : a.id))}
-                    className={`tap flex aspect-square items-center justify-center rounded-2xl text-2xl ${
+                    className={`tap flex aspect-square items-center justify-center overflow-hidden rounded-2xl ${
                       avatarId === a.id ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
                     }`}
                     style={{ backgroundImage: a.grad }}
                   >
-                    {a.emoji}
+                    <img src={a.image} alt="" className="size-full object-cover" />
                   </button>
                 ))}
               </div>

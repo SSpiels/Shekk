@@ -25,10 +25,10 @@ export function Avatar({
     return (
       <span
         aria-hidden
-        className={`${className} ${textClassName} flex shrink-0 items-center justify-center rounded-full leading-none`}
+        className={`${className} flex shrink-0 items-center justify-center overflow-hidden rounded-full leading-none`}
         style={{ backgroundImage: preset.grad }}
       >
-        {preset.emoji}
+        <img src={preset.image} alt="" className="size-full object-cover" />
       </span>
     );
   }

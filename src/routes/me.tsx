@@ -10,7 +10,8 @@ import { useProfile } from "@/lib/useProfile";
 import { useProgramme, useTravel } from "@/lib/useProgramme";
 import { getJourney } from "@/lib/journey-phase";
 import { ShekkTagCard } from "@/components/social/ShekkTagCard";
-import { useUnreadChats } from "@/lib/useSocial";
+import { useMyHandle, useUnreadChats } from "@/lib/useSocial";
+import { avatarPreset } from "@/lib/avatars";
 import { MONEY_ENABLED } from "@/lib/flags";
 
 
@@ -35,6 +36,7 @@ export const Route = createFileRoute("/me")({
 function Me() {
   const ready = useOnboardedGate();
   const { state, verification, daysLeft, setAvatar, isPremium } = useApp();
+  const { me: myHandle } = useMyHandle();
   const kyc = useProfile();
   const { programme } = useProgramme();
   const { travel } = useTravel();
@@ -77,9 +79,17 @@ function Me() {
           <label className="tap relative cursor-pointer">
             {state.avatar ? (
               <img src={state.avatar} alt="Your profile photo" className="size-16 rounded-2xl object-cover" />
+            ) : avatarPreset(myHandle?.avatarUrl) ? (
+              <span
+                aria-hidden
+                className="flex size-16 items-center justify-center overflow-hidden rounded-2xl"
+                style={{ backgroundImage: avatarPreset(myHandle?.avatarUrl)!.grad }}
+              >
+                <img src={avatarPreset(myHandle?.avatarUrl)!.image} alt="" className="size-full object-cover" />
+              </span>
             ) : (
               <span className="flex size-16 items-center justify-center rounded-2xl bg-accent text-2xl font-bold text-accent-foreground">
-                {(state.name || "S").slice(0, 1).toUpperCase()}
+                {(travel.displayName || state.name || "S").slice(0, 1).toUpperCase()}
               </span>
             )}
             <span className="absolute -bottom-1 -right-1 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-card">

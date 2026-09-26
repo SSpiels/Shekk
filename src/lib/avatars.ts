@@ -1,25 +1,26 @@
 /**
- * A small preset set of simple avatars — an emoji on one of the app's
- * existing gradient tokens (see styles.css). Stored as a short "avatar:<id>"
- * string in member_handles.avatar_url so it's trivially distinguishable from
- * a real uploaded-photo URL if that's added later.
+ * A small preset set of simple avatars — an Israel/Birthright-themed icon on
+ * one of the app's existing gradient tokens (see styles.css), backing onto
+ * static images in public/avatars/. Stored as a short "avatar:<id>" string in
+ * member_handles.avatar_url so it's trivially distinguishable from a real
+ * uploaded-photo URL if that's added later.
  */
 
-export type AvatarPreset = { id: string; emoji: string; grad: string };
+export type AvatarPreset = { id: string; image: string; grad: string };
 
 export const AVATAR_PRESETS: AvatarPreset[] = [
-  { id: "fox", emoji: "🦊", grad: "var(--grad-deals)" },
-  { id: "koala", emoji: "🐨", grad: "var(--grad-cloud)" },
-  { id: "turtle", emoji: "🐢", grad: "var(--grad-discover)" },
-  { id: "lion", emoji: "🦁", grad: "var(--grad-sun)" },
-  { id: "penguin", emoji: "🐧", grad: "var(--grad-sky)" },
-  { id: "butterfly", emoji: "🦋", grad: "var(--grad-social)" },
-  { id: "cactus", emoji: "🌵", grad: "var(--grad-wallet)" },
-  { id: "wave", emoji: "🌊", grad: "var(--grad-travel)" },
-  { id: "star", emoji: "⭐", grad: "var(--grad-chag)" },
-  { id: "moon", emoji: "🌙", grad: "var(--grad-night)" },
-  { id: "sunflower", emoji: "🌻", grad: "var(--grad-haze)" },
-  { id: "pomegranate", emoji: "🍎", grad: "var(--grad-alert)" },
+  { id: "hoopoe", image: "/avatars/hoopoe.png", grad: "var(--grad-deals)" },
+  { id: "ibex", image: "/avatars/ibex.png", grad: "var(--grad-cloud)" },
+  { id: "camel", image: "/avatars/camel.png", grad: "var(--grad-discover)" },
+  { id: "hyrax", image: "/avatars/hyrax.png", grad: "var(--grad-sun)" },
+  { id: "turtle", image: "/avatars/turtle.png", grad: "var(--grad-sky)" },
+  { id: "jackal", image: "/avatars/jackal.png", grad: "var(--grad-social)" },
+  { id: "gazelle", image: "/avatars/gazelle.png", grad: "var(--grad-wallet)" },
+  { id: "falafel", image: "/avatars/falafel.png", grad: "var(--grad-travel)" },
+  { id: "coffee", image: "/avatars/coffee.png", grad: "var(--grad-chag)" },
+  { id: "ravkav", image: "/avatars/ravkav.png", grad: "var(--grad-night)" },
+  { id: "cactus", image: "/avatars/cactus.png", grad: "var(--grad-haze)" },
+  { id: "pomegranate", image: "/avatars/pomegranate.png", grad: "var(--grad-alert)" },
 ];
 
 const AVATAR_PREFIX = "avatar:";
