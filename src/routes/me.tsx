@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { BadgeCheck, AlertTriangle, ChevronRight, Bookmark, Receipt, Settings, FileText, Camera, Crown, CreditCard, Sparkles, ShieldCheck, MessageCircle, LifeBuoy } from "lucide-react";
 import { AppShell, Card, ReverifyBanner } from "@/components/AppShell";
@@ -11,7 +12,8 @@ import { useProgramme, useTravel } from "@/lib/useProgramme";
 import { getJourney } from "@/lib/journey-phase";
 import { ShekkTagCard } from "@/components/social/ShekkTagCard";
 import { useMyHandle, useUnreadChats } from "@/lib/useSocial";
-import { avatarPreset } from "@/lib/avatars";
+import { AVATAR_PRESETS, avatarPreset, avatarPresetId, avatarUrlFor } from "@/lib/avatars";
+import { Sheet } from "@/components/programme/Bits";
 import { MONEY_ENABLED } from "@/lib/flags";
 
 
@@ -36,7 +38,8 @@ export const Route = createFileRoute("/me")({
 function Me() {
   const ready = useOnboardedGate();
   const { state, verification, daysLeft, setAvatar, isPremium } = useApp();
-  const { me: myHandle } = useMyHandle();
+  const { me: myHandle, save: saveHandle } = useMyHandle();
+  const [pickerOpen, setPickerOpen] = useState(false);
   const kyc = useProfile();
   const { programme } = useProgramme();
   const { travel } = useTravel();
@@ -47,9 +50,18 @@ function Me() {
     const file = e.target.files?.[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => setAvatar(String(reader.result));
+    reader.onload = () => {
+      setAvatar(String(reader.result));
+      setPickerOpen(false);
+    };
     reader.readAsDataURL(file);
     e.target.value = "";
+  };
+
+  const onPickPreset = (id: string) => {
+    setAvatar(null);
+    saveHandle.mutate({ avatarUrl: avatarUrlFor(id) });
+    setPickerOpen(false);
   };
 
   if (!ready)
@@ -76,7 +88,12 @@ function Me() {
     <AppShell>
       <header className="bg-ink px-5 pb-8 pt-7 text-ink-foreground">
         <div className="flex items-center gap-4">
-          <label className="tap relative cursor-pointer">
+          <button
+            type="button"
+            onClick={() => setPickerOpen(true)}
+            aria-label="Change your avatar"
+            className="tap relative shrink-0 cursor-pointer"
+          >
             {state.avatar ? (
               <img src={state.avatar} alt="Your profile photo" className="size-16 rounded-2xl object-cover" />
             ) : avatarPreset(myHandle?.avatarUrl) ? (
@@ -95,21 +112,15 @@ function Me() {
             <span className="absolute -bottom-1 -right-1 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-card">
               <Camera className="size-3.5" />
             </span>
-            <input type="file" accept="image/*" className="hidden" onChange={onPickPhoto} />
-          </label>
+          </button>
           <div className="min-w-0">
             <h1 className="truncate font-display text-2xl font-bold tracking-tight">
               {travel.displayName || state.name || "Your Shekk"}
             </h1>
             <p className="line-clamp-2 text-[13px] leading-snug opacity-75">{contextLine}</p>
-            <p className="mt-1 text-xs opacity-60">
-              {state.avatar ? "Friends see this photo when you pay" : "Add a photo so friends recognise you"}
-              {state.avatar && (
-                <button onClick={() => setAvatar(null)} className="ml-2 underline">
-                  Remove
-                </button>
-              )}
-            </p>
+            <button type="button" onClick={() => setPickerOpen(true)} className="mt-1 text-xs underline opacity-70">
+              {state.avatar || avatarPreset(myHandle?.avatarUrl) ? "Change avatar" : "Choose an avatar"}
+            </button>
           </div>
         </div>
 
@@ -229,6 +240,47 @@ function Me() {
           </div>
         ) : null}
       </div>
+
+      <Sheet open={pickerOpen} onClose={() => setPickerOpen(false)} title="Choose your avatar">
+        <div className="grid grid-cols-4 gap-2.5">
+          {AVATAR_PRESETS.map((a) => {
+            const selected = !state.avatar && avatarPresetId(myHandle?.avatarUrl) === a.id;
+            return (
+              <button
+                key={a.id}
+                type="button"
+                aria-label={a.id}
+                aria-pressed={selected}
+                onClick={() => onPickPreset(a.id)}
+                className={`tap flex aspect-square items-center justify-center overflow-hidden rounded-2xl ${
+                  selected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
+                }`}
+                style={{ backgroundImage: a.grad }}
+              >
+                <img src={a.image} alt="" className="size-full object-cover" />
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-4 space-y-2">
+          <label className="tap flex cursor-pointer items-center justify-center gap-2 rounded-2xl bg-muted px-4 py-3 text-sm font-semibold">
+            <Camera className="size-4" /> Upload your own photo
+            <input type="file" accept="image/*" className="hidden" onChange={onPickPhoto} />
+          </label>
+          {state.avatar && (
+            <button
+              type="button"
+              onClick={() => {
+                setAvatar(null);
+                setPickerOpen(false);
+              }}
+              className="tap-flat w-full py-2 text-sm text-muted-foreground underline"
+            >
+              Remove my photo
+            </button>
+          )}
+        </div>
+      </Sheet>
     </AppShell>
   );
 }
