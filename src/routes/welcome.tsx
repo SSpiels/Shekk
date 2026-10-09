@@ -262,6 +262,16 @@ function Setup() {
     setStep(travel.onboardingCompletedAt ? "done" : (resumed ?? "profile"));
   }, [fetched, step, travel, myHandle]);
 
+  /* A joined programme already knows the dates and the base — start from
+   * those, without overriding anything the member has already saved. */
+  useEffect(() => {
+    if (!joined) return;
+    if (programme.startsOn) setArrival((v) => v || programme.startsOn!);
+    if (programme.endsOn) setDeparture((v) => v || programme.endsOn!);
+    if (programme.city && LOCATION_CITIES.includes(programme.city)) setCity((v) => v || programme.city!);
+    setArea((v) => v || "Programme accommodation");
+  }, [joined, programme.startsOn, programme.endsOn, programme.city]);
+
   /** Independents never see the programme stage; nobody sees the money/KYC
    *  stages while MONEY_ENABLED is off — flipping that flag back on brings
    *  them back with no other change needed here. */
@@ -285,6 +295,9 @@ function Setup() {
 
   const stay = arrival && departure ? daysBetween(arrival, departure) : null;
   const untilFlight = arrival ? daysFromToday(arrival) : null;
+  /** A tour or short trip moves around, so a single "home" city is optional. */
+  const shortTrip = stay !== null && stay >= 0 && stay <= 21;
+  const datesFromProgramme = joined && Boolean(programme.startsOn) && arrival === programme.startsOn;
 
   async function persist(patch: Parameters<typeof save.mutateAsync>[0]) {
     try {
@@ -448,7 +461,7 @@ function Setup() {
   }
 
   const canContinue =
-    step === "money" ? Boolean(homeCountry) : step === "place" ? Boolean(city) : true;
+    step === "money" ? Boolean(homeCountry) : step === "place" ? Boolean(city) || shortTrip : true;
 
   return (
     <FocusScreen nav={false}>
@@ -643,7 +656,11 @@ function Setup() {
           <Stage
             icon={CalendarDays}
             title="When does your journey begin?"
-            blurb="We'll count down to your landing and line the arrival admin up around it. Rough dates are fine — you can change them later."
+            blurb={
+              datesFromProgramme
+                ? `These come from ${programme.cohortName ?? "your programme"}. Change them only if you're arriving or leaving separately.`
+                : "We'll count down to your landing and line the arrival admin up around it. Rough dates are fine — you can change them later."
+            }
           >
             <Field label="Arrival date">
               <input
@@ -687,8 +704,12 @@ function Setup() {
         {step === "place" ? (
           <Stage
             icon={MapPin}
-            title="Where will you call home?"
-            blurb="Your base sets your weather, your Shabbat times, your transport options and what Shekk recommends nearby."
+            title={shortTrip ? "Where will you be based?" : "Where will you call home?"}
+            blurb={
+              shortTrip
+                ? "Pick the city you'll spend the most time in — it sets your weather, Shabbat times and what Shekk recommends nearby. Moving around on a tour? You can skip this."
+                : "Your base sets your weather, your Shabbat times, your transport options and what Shekk recommends nearby."
+            }
           >
             <Field label="City or area">
               <Choices options={LOCATION_CITIES} value={city} onChange={setCity} />
@@ -865,6 +886,12 @@ function Setup() {
           </p>
         ) : null}
 
+        {!canContinue && !busy ? (
+          <p className="mb-3 text-center text-xs text-muted-foreground">
+            {step === "place" ? "Choose a city to continue." : "Choose your home country to continue."}
+          </p>
+        ) : null}
+
         <PrimaryButton disabled={!canContinue || busy} onClick={() => void forward()}>
           {busy ? (
             <span className="flex items-center justify-center gap-2">
@@ -877,6 +904,8 @@ function Setup() {
           ) : step === "focus" && interests.length === 0 ? (
             "Skip for now"
           ) : step === "profile" && !displayName.trim() ? (
+            "Skip for now"
+          ) : step === "place" && !city && shortTrip ? (
             "Skip for now"
           ) : step === "code" && !joined && code.trim().length < 3 ? (
             "I don't have a code yet"
