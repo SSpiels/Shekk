@@ -17,6 +17,7 @@ import {
   UtensilsCrossed,
   Wallet,
 } from "lucide-react";
+import { MONEY_ENABLED } from "@/lib/flags";
 
 export type InterestId =
   | "spending"
@@ -39,7 +40,7 @@ export type Interest = {
   icon: typeof Wallet;
 };
 
-export const INTERESTS: Interest[] = [
+const ALL_INTERESTS: Interest[] = [
   {
     id: "spending",
     label: "Spending & exchange",
@@ -105,6 +106,10 @@ export const INTERESTS: Interest[] = [
     icon: Compass,
   },
 ];
+
+/** "Spending & exchange" points at the paused money product, so it is only
+ *  offered (and only resolved on Home) while MONEY_ENABLED is on. */
+export const INTERESTS: Interest[] = ALL_INTERESTS.filter((i) => MONEY_ENABLED || i.id !== "spending");
 
 const BY_ID = new Map(INTERESTS.map((i) => [i.id, i]));
 

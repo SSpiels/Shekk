@@ -19,6 +19,7 @@ import {
   CalendarDays,
   Check,
   ChevronLeft,
+  CircleAlert,
   Compass,
   Loader2,
   MapPin,
@@ -347,6 +348,10 @@ function Setup() {
           );
           return;
         }
+        // Stay on this step so the "You're in" confirmation is seen; the next
+        // Continue (now with `joined` true) moves on.
+        setBusy(false);
+        return;
       }
       const ok = await persist({ onboardingStep: nextStep });
       setBusy(false);
@@ -504,6 +509,7 @@ function Setup() {
                 autoFocus
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
+                aria-label="Your name"
                 placeholder="e.g. Jordan"
                 maxLength={60}
                 className="w-full rounded-2xl bg-muted px-4 py-3.5 text-base outline-none"
@@ -543,7 +549,7 @@ function Setup() {
                   {
                     id: "programme",
                     label: "With a programme",
-                    hint: "Gap year, seminary, yeshiva, MASA, study abroad",
+                    hint: "Birthright, gap year, seminary, yeshiva, MASA, study abroad",
                   },
                   {
                     id: "independent",
@@ -566,18 +572,42 @@ function Setup() {
 
         {step === "code" ? (
           <Stage
-            icon={Building2}
-            title="Unlock your programme"
-            blurb="If your programme is on Shekk, the code they gave you brings your timetable, your contacts and your checklist straight into the app."
+            icon={joined ? Check : Building2}
+            title={joined ? "You're in." : "Unlock your programme"}
+            blurb={
+              joined
+                ? "Your timetable, contacts and checklist are now in Shekk."
+                : "If your programme is on Shekk, the code they gave you brings your timetable, your contacts and your checklist straight into the app."
+            }
           >
             {joined ? (
-              <div className="rounded-2xl border border-success/30 bg-success/10 p-4">
-                <p className="text-sm font-semibold">
-                  {programme.programmeName ?? "Your programme"} is in
+              <div className="animate-in fade-in zoom-in-95 rounded-2xl border border-border bg-card p-4 shadow-card duration-300">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  {programme.organisation ?? "Your programme"}
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {programme.cohortName ?? "Your timetable and contacts are now in Shekk."}
+                <p className="mt-1 font-display text-xl font-bold leading-tight tracking-tight">
+                  {programme.programmeName ?? "Your programme"}
                 </p>
+                {programme.cohortName ? (
+                  <p className="mt-0.5 text-sm text-muted-foreground">{programme.cohortName}</p>
+                ) : null}
+                {programme.checklist.length > 0 || programme.contacts.length > 0 ? (
+                  <ul className="mt-3 space-y-1.5 border-t border-border pt-3 text-sm">
+                    {programme.checklist.length > 0 ? (
+                      <li className="flex items-center gap-2">
+                        <Check className="size-4 shrink-0 text-success" />
+                        {programme.checklist.length} {programme.checklist.length === 1 ? "thing" : "things"} on your
+                        checklist
+                      </li>
+                    ) : null}
+                    {programme.contacts.length > 0 ? (
+                      <li className="flex items-center gap-2">
+                        <Check className="size-4 shrink-0 text-success" />
+                        {programme.contacts.length} {programme.contacts.length === 1 ? "contact" : "contacts"} on hand
+                      </li>
+                    ) : null}
+                  </ul>
+                ) : null}
               </div>
             ) : (
               <Field label="Programme code">
@@ -595,8 +625,9 @@ function Setup() {
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !busy) void forward();
                   }}
-                  placeholder="e.g. SHEKKDEMO"
-                  className="w-full rounded-2xl bg-muted px-4 py-3.5 text-base font-semibold uppercase tracking-wide outline-none"
+                  aria-label="Programme code"
+                  placeholder="Enter your code"
+                  className="w-full rounded-2xl bg-muted px-4 py-3.5 text-base font-semibold uppercase tracking-wide outline-none placeholder:font-normal placeholder:normal-case placeholder:tracking-normal"
                 />
                 <p className="mt-2 text-xs text-muted-foreground">
                   No code yet? Carry on without it — nothing else changes, and you can add it from
@@ -616,6 +647,7 @@ function Setup() {
             <Field label="Arrival date">
               <input
                 type="date"
+                aria-label="Arrival date"
                 value={arrival}
                 onChange={(e) => setArrival(e.target.value)}
                 className="w-full rounded-2xl bg-muted px-4 py-3.5 text-base outline-none"
@@ -624,6 +656,7 @@ function Setup() {
             <Field label="Departure date (optional)">
               <input
                 type="date"
+                aria-label="Departure date (optional)"
                 value={departure}
                 min={arrival || undefined}
                 onChange={(e) => setDeparture(e.target.value)}
@@ -798,13 +831,20 @@ function Setup() {
           </Stage>
         ) : null}
 
-        {step === "done" ? <Done city={city} /> : null}
+        {step === "done" ? (
+          <Done
+            city={city}
+            name={displayName || state.name || ""}
+            avatarUrl={avatarId ? avatarUrlFor(avatarId) : null}
+          />
+        ) : null}
       </div>
 
       {step === "done" ? (
         <Ready
           style={style}
           programmeName={joined ? (programme.programmeName ?? "Your programme") : null}
+          programmeTodo={joined ? programme.checklist.filter((c) => !c.done).length : null}
           arrival={arrival}
           untilFlight={untilFlight}
           city={city}
@@ -815,8 +855,12 @@ function Setup() {
 
       <div className="px-5 pb-12 pt-8">
         {error ? (
-          <p role="alert" className="mb-3 text-sm font-semibold text-destructive">
-            {error}
+          <p
+            role="alert"
+            className="mb-3 flex items-start gap-2 rounded-2xl border border-destructive/40 bg-destructive/10 px-3.5 py-3 text-sm font-semibold text-destructive"
+          >
+            <CircleAlert className="mt-0.5 size-4 shrink-0" />
+            <span>{error}</span>
           </p>
         ) : null}
 
@@ -887,19 +931,31 @@ function SetupLoadError({ onRetry, onSkip }: { onRetry: () => void; onSkip: () =
 /* ─────────────────────────────── Pieces ─────────────────────────────── */
 
 /** The celebratory head of the completion screen. */
-function Done({ city }: { city: string }) {
+function Done({ city, name, avatarUrl }: { city: string; name: string; avatarUrl: string | null }) {
+  const first = name.trim().split(" ")[0];
+  const personal = Boolean(first) || Boolean(avatarUrl);
   return (
     <div className="animate-in fade-in zoom-in-95 space-y-4 duration-500">
-      <div className="relative flex size-14 items-center justify-center rounded-2xl bg-primary-soft text-primary">
-        <Plane className="size-6" />
-        <span
-          aria-hidden
-          className="animate-in zoom-in absolute -inset-2 rounded-[1.4rem] border border-primary/30 duration-700"
-        />
-      </div>
+      {personal ? (
+        <div className="relative w-fit">
+          <Avatar name={name || "S"} src={avatarUrl} className="size-16" textClassName="text-2xl" />
+          <span
+            aria-hidden
+            className="animate-in zoom-in absolute -inset-2 rounded-full border border-primary/30 duration-700"
+          />
+        </div>
+      ) : (
+        <div className="relative flex size-14 items-center justify-center rounded-2xl bg-primary-soft text-primary">
+          <Plane className="size-6" />
+          <span
+            aria-hidden
+            className="animate-in zoom-in absolute -inset-2 rounded-[1.4rem] border border-primary/30 duration-700"
+          />
+        </div>
+      )}
       <div>
         <h1 className="font-display text-[1.8rem] font-bold leading-tight tracking-tight">
-          Your Israel journey is taking shape.
+          {first ? `You're all set, ${first}.` : "Your Israel journey is taking shape."}
         </h1>
         <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
           {city
@@ -915,6 +971,7 @@ function Done({ city }: { city: string }) {
 function Ready({
   style,
   programmeName,
+  programmeTodo,
   arrival,
   untilFlight,
   city,
@@ -923,6 +980,7 @@ function Ready({
 }: {
   style: "programme" | "independent";
   programmeName: string | null;
+  programmeTodo: number | null;
   arrival: string;
   untilFlight: number | null;
   city: string;
@@ -933,6 +991,7 @@ function Ready({
     {
       label: "Coming",
       value: programmeName ?? (style === "programme" ? "With a programme" : "Independently"),
+      wide: Boolean(programmeName),
     },
     {
       label: arrival && untilFlight !== null && untilFlight > 0 ? "You fly in" : "Arriving",
@@ -941,9 +1000,10 @@ function Ready({
           ? `${untilFlight} ${untilFlight === 1 ? "day" : "days"}`
           : fmtDate(arrival)
         : "Dates to confirm",
+      wide: false,
     },
-    { label: "Based in", value: city || "To be decided" },
-    ...(MONEY_ENABLED ? [{ label: "Adding money in", value: currency }] : []),
+    { label: "Based in", value: city || "To be decided", wide: false },
+    ...(MONEY_ENABLED ? [{ label: "Adding money in", value: currency, wide: false }] : []),
   ];
 
   const focus = INTERESTS.filter((i) => interests.includes(i.id)).slice(0, 3);
@@ -951,7 +1011,16 @@ function Ready({
   const primary =
     style === "programme" && !programmeName
       ? { to: "/programme" as const, label: "Add your programme code", hint: "Brings your timetable and contacts in" }
-      : untilFlight !== null && untilFlight > 0
+      : programmeName
+        ? {
+            to: "/programme" as const,
+            label: "Open your programme",
+            hint:
+              programmeTodo && programmeTodo > 0
+                ? `${programmeTodo} ${programmeTodo === 1 ? "thing" : "things"} to sort first`
+                : "Your timetable, contacts and updates",
+          }
+        : untilFlight !== null && untilFlight > 0
         ? { to: "/before-you-fly" as const, label: "Start before you fly", hint: "The arrival admin, in order" }
         : MONEY_ENABLED
           ? { to: "/topup" as const, label: "Add your first money", hint: "Fund in your home currency" }
@@ -961,19 +1030,35 @@ function Ready({
     <div className="animate-in fade-in slide-in-from-bottom-2 space-y-4 px-5 pt-6 duration-500">
       <dl className="grid grid-cols-2 gap-2">
         {rows.map((r) => (
-          <div key={r.label} className="rounded-2xl border border-border bg-card p-3 shadow-card">
+          <div
+            key={r.label}
+            className={`rounded-2xl border border-border bg-card p-3 shadow-card ${r.wide ? "col-span-2" : ""}`}
+          >
             <dt className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
               {r.label}
             </dt>
-            <dd className="mt-1 truncate text-sm font-semibold">{r.value}</dd>
+            <dd className={`mt-1 text-sm font-semibold ${r.wide ? "leading-snug" : "truncate"}`}>{r.value}</dd>
           </div>
         ))}
       </dl>
 
       {focus.length > 0 ? (
-        <p className="text-xs text-muted-foreground">
-          Your home screen leads with {focus.map((f) => f.label.toLowerCase()).join(", ")}.
-        </p>
+        <div>
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+            Your home screen leads with
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {focus.map((f) => (
+              <span
+                key={f.id}
+                className="flex items-center gap-1.5 rounded-full bg-primary-soft px-3 py-1.5 text-xs font-semibold text-primary"
+              >
+                <f.icon className="size-3.5" />
+                {f.label}
+              </span>
+            ))}
+          </div>
+        </div>
       ) : null}
 
       <Link
@@ -991,9 +1076,15 @@ function Ready({
       </Link>
 
       <div className="flex flex-wrap gap-2">
-        <Link to="/programme" className="tap rounded-full bg-muted px-3.5 py-2 text-xs font-semibold">
-          Your programme
-        </Link>
+        {programmeName ? (
+          <Link to="/before-you-fly" className="tap rounded-full bg-muted px-3.5 py-2 text-xs font-semibold">
+            Before you fly
+          </Link>
+        ) : (
+          <Link to="/programme" className="tap rounded-full bg-muted px-3.5 py-2 text-xs font-semibold">
+            Your programme
+          </Link>
+        )}
         <Link to="/israel" className="tap rounded-full bg-muted px-3.5 py-2 text-xs font-semibold">
           Explore Israel
         </Link>

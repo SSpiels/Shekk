@@ -38,7 +38,7 @@ export const SETUP_TASKS: SetupTask[] = [
   {
     key: "sim",
     title: "Sort your Israeli SIM",
-    blurb: "Answer four questions and we'll recommend the right eSIM or local plan for your stay.",
+    blurb: "Answer three questions and we'll recommend the right eSIM or local plan for your stay.",
     phase: "before",
     href: "/services/esim",
     cta: "Find my SIM",

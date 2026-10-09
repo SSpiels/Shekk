@@ -14,6 +14,7 @@ import { LocationBar } from "@/components/LocationBar";
 
 import { useApp } from "@/lib/store";
 import { useMyHandle } from "@/lib/useSocial";
+import { Avatar } from "@/components/Avatar";
 import { useProfile } from "@/lib/useProfile";
 import { useOnboardedGate } from "@/lib/useOnboardedGate";
 import { useSetup } from "@/lib/useSetup";
@@ -260,7 +261,7 @@ function ServicePrompts() {
     {
       to: "/services/esim",
       title: "Get an Israeli SIM",
-      body: "Four questions, then the right eSIM for your stay",
+      body: "Three questions, then the right eSIM for your stay",
       Icon: Smartphone,
       done: setup.isDone("sim"),
     },
@@ -412,7 +413,7 @@ function HomeScreen() {
   return (
     <AppShell>
       <div className="px-5 pb-1 pt-6">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 pr-12">
           <img
             src="/logo.png"
             alt="Shekk logo"
@@ -427,10 +428,17 @@ function HomeScreen() {
             </StatusPill>
           ) : null}
         </div>
-        <h1 className="mt-3 font-display text-[1.7rem] font-bold leading-tight tracking-tight">
-          {greeting()}
-          {firstName ? `, ${firstName}` : ""}
-        </h1>
+        <div className="mt-3 flex items-center justify-between gap-3">
+          <h1 className="min-w-0 font-display text-[1.7rem] font-bold leading-tight tracking-tight">
+            {greeting()}
+            {firstName ? `, ${firstName}` : ""}
+          </h1>
+          {myHandle?.avatarUrl ? (
+            <Link to="/me" aria-label="Your profile" className="tap shrink-0">
+              <Avatar name={firstName || "S"} src={myHandle.avatarUrl} className="size-11" textClassName="text-base" />
+            </Link>
+          ) : null}
+        </div>
         <p className="mt-1 text-[13px] leading-snug text-muted-foreground">{journey.line}</p>
       </div>
 
