@@ -492,6 +492,18 @@ export async function requestFriend(userId: string, targetId: string): Promise<{
     .from("friendships")
     .insert({ requester_id: userId, addressee_id: targetId, status: "pending" });
   fail(error, "Could not send that request");
+
+  try {
+    const me = await ensureHandle(userId);
+    const { sendPushToUsers } = await import("./push.server");
+    await sendPushToUsers(
+      [targetId],
+      { title: "New friend request", body: `${me.displayName} wants to connect on Shekk`, url: "/social", tag: `friend-${userId}` },
+      "chat",
+    );
+  } catch (e) {
+    console.warn("[push] friend request notification skipped", (e as Error)?.message ?? e);
+  }
   return { status: "pending" };
 }
 
@@ -900,6 +912,7 @@ export async function sendMessage(userId: string, conversationId: string, body: 
 
   const row = data as { id: string; created_at: string };
   const me = await ensureHandle(userId);
+  await pushChat(conversationId, userId, me.displayName, text);
   return {
     id: row.id,
     conversationId,
@@ -911,6 +924,29 @@ export async function sendMessage(userId: string, conversationId: string, body: 
     createdAt: row.created_at,
     mine: true,
   };
+}
+
+/** Tell the other people in a conversation on their phones. Never throws. */
+async function pushChat(conversationId: string, senderId: string, senderName: string, text: string) {
+  try {
+    const db = await admin();
+    const { data } = await db
+      .from("conversation_members")
+      .select("user_id")
+      .eq("conversation_id", conversationId)
+      .neq("user_id", senderId);
+    const ids = ((data ?? []) as Array<{ user_id: string }>).map((r) => r.user_id);
+    if (!ids.length) return;
+    const { sendPushToUsers } = await import("./push.server");
+    const { clip } = await import("./push-shared");
+    await sendPushToUsers(
+      ids,
+      { title: senderName, body: clip(text, 90), url: `/social/${conversationId}`, tag: `chat-${conversationId}` },
+      "chat",
+    );
+  } catch (error) {
+    console.warn("[push] chat notification skipped", (error as Error)?.message ?? error);
+  }
 }
 
 async function postSystemMessage(

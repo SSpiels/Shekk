@@ -1,4 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import {
   ChevronRight,
   CreditCard,
@@ -23,6 +26,9 @@ import { ils } from "@/lib/mock";
 import { useOnboardedGate } from "@/lib/useOnboardedGate";
 import { MONEY_ENABLED } from "@/lib/flags";
 import { useAdminSession } from "@/lib/admin-data";
+import { detachThisDevice, usePush } from "@/lib/usePush";
+import { getPushPrefs, sendTestPush, setPushPrefs } from "@/lib/push.functions";
+import { DEFAULT_PUSH_PREFS, PUSH_CATEGORIES, type PushPrefs } from "@/lib/push-shared";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -50,6 +56,7 @@ function SettingsPage() {
   const s = state.settings;
 
   async function signOut() {
+    await detachThisDevice();
     await supabase.auth.signOut();
     void navigate({ to: "/auth", search: { next: "/" } });
   }
@@ -184,6 +191,8 @@ function SettingsPage() {
             onChange={(v) => setSetting("hapticFeedback", v)}
           />
         </Section>
+
+        <PushSection />
 
         {/* Notifications */}
         <Section Icon={Bell} title="Notifications">
@@ -452,5 +461,120 @@ function RowLink({ to, label, hint }: { to: string; label: string; hint: string 
       <span className="text-xs text-muted-foreground">{hint}</span>
       <ChevronRight className="size-4 text-muted-foreground" />
     </Link>
+  );
+}
+
+/* ───────────────────────────── Phone notifications ───────────────────────── */
+
+function PushSection() {
+  const { signedIn } = useApp();
+  const { status, busy, error, enable, disable } = usePush();
+  const qc = useQueryClient();
+  const getPrefs = useServerFn(getPushPrefs);
+  const setPrefs = useServerFn(setPushPrefs);
+  const sendTest = useServerFn(sendTestPush);
+  const [testNote, setTestNote] = useState<string | null>(null);
+
+  const prefsQuery = useQuery({
+    queryKey: ["push", "prefs"],
+    queryFn: () => getPrefs(),
+    enabled: signedIn && status === "on",
+    retry: false,
+  });
+  const prefs = prefsQuery.data ?? DEFAULT_PUSH_PREFS;
+
+  const change = useMutation({
+    mutationFn: (patch: Partial<PushPrefs>) => setPrefs({ data: patch }),
+    onMutate: async (patch) => {
+      await qc.cancelQueries({ queryKey: ["push", "prefs"] });
+      const previous = qc.getQueryData<PushPrefs>(["push", "prefs"]);
+      qc.setQueryData<PushPrefs>(["push", "prefs"], { ...(previous ?? DEFAULT_PUSH_PREFS), ...patch });
+      return { previous };
+    },
+    onError: (_e, _v, ctx) => qc.setQueryData(["push", "prefs"], ctx?.previous),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["push", "prefs"] }),
+  });
+
+  const test = useMutation({
+    mutationFn: () => sendTest(),
+    onMutate: () => setTestNote(null),
+    onSuccess: () => setTestNote("Sent — it should arrive in a moment."),
+    onError: (e) => setTestNote(e instanceof Error ? e.message : "Couldn't send a test."),
+  });
+
+  if (status === "loading") return null;
+
+  const message = (text: string, extra?: React.ReactNode) => (
+    <div className="space-y-2 p-4">
+      <p className="text-sm text-muted-foreground">{text}</p>
+      {extra}
+    </div>
+  );
+
+  return (
+    <Section Icon={Bell} title="Phone notifications" note="Get a heads-up on your lock screen, even when Shekk is closed.">
+      {status === "unsupported"
+        ? message("This browser can't show notifications. Try Chrome, Edge, Firefox or Safari on a recent phone or computer.")
+        : status === "needs-install"
+          ? message(
+              "On iPhone, notifications work once Shekk is on your Home Screen. Tap Share, then Add to Home Screen, then open Shekk from there and come back to this page.",
+            )
+          : status === "not-configured"
+            ? message("Notifications aren't switched on for Shekk yet. Check back soon.")
+            : status === "denied"
+              ? message(
+                  "Notifications are blocked for Shekk. Allow them in your phone or browser settings for this site, then come back here.",
+                )
+              : status === "off"
+                ? (
+                    <div className="space-y-3 p-4">
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void enable()}
+                        className="tap flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+                      >
+                        {busy ? "Turning on…" : "Turn on notifications"}
+                      </button>
+                      {error ? <p className="text-xs font-semibold text-destructive">{error}</p> : null}
+                    </div>
+                  )
+                : (
+                    <>
+                      {PUSH_CATEGORIES.map((c, i) => (
+                        <div key={c.id}>
+                          {i > 0 ? <Divider /> : null}
+                          <Toggle
+                            label={c.label}
+                            hint={c.hint}
+                            checked={prefs[c.id]}
+                            onChange={(v) => change.mutate({ [c.id]: v })}
+                          />
+                        </div>
+                      ))}
+                      <Divider />
+                      <div className="flex flex-wrap items-center gap-3 p-4">
+                        <button
+                          type="button"
+                          disabled={test.isPending}
+                          onClick={() => test.mutate()}
+                          className="tap rounded-xl bg-muted px-4 py-2.5 text-sm font-semibold disabled:opacity-60"
+                        >
+                          {test.isPending ? "Sending…" : "Send me a test"}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void disable()}
+                          className="tap-flat text-sm font-semibold text-muted-foreground underline disabled:opacity-60"
+                        >
+                          Turn off on this device
+                        </button>
+                        {testNote ? <p className="w-full text-xs text-muted-foreground">{testNote}</p> : null}
+                        {error ? <p className="w-full text-xs font-semibold text-destructive">{error}</p> : null}
+                      </div>
+                    </>
+                  )}
+    </Section>
   );
 }

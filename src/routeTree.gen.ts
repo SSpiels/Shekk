@@ -96,6 +96,7 @@ import { Route as StaffSettingsRouteImport } from './routes/staff/settings'
 import { Route as StaffTeamRouteImport } from './routes/staff/team'
 import { Route as WhatsOnIndexRouteImport } from './routes/whats-on.index'
 import { Route as ApiAuthEmailWebhookRouteImport } from './routes/api/auth/email-webhook'
+import { Route as ApiCronPushRemindersRouteImport } from './routes/api/cron/push-reminders'
 import { Route as ApiCronSyncEventsRouteImport } from './routes/api/cron/sync-events'
 import { Route as ExploreEventIdRouteImport } from './routes/explore/event.$id'
 import { Route as ExploreFitnessIndexRouteImport } from './routes/explore/fitness.index'
@@ -550,6 +551,11 @@ const ApiAuthEmailWebhookRoute = ApiAuthEmailWebhookRouteImport.update({
   path: '/api/auth/email-webhook',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronPushRemindersRoute = ApiCronPushRemindersRouteImport.update({
+  id: '/api/cron/push-reminders',
+  path: '/api/cron/push-reminders',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiCronSyncEventsRoute = ApiCronSyncEventsRouteImport.update({
   id: '/api/cron/sync-events',
   path: '/api/cron/sync-events',
@@ -731,6 +737,7 @@ export interface FileRoutesByFullPath {
   '/staff/': typeof StaffIndexRoute
   '/whats-on/': typeof WhatsOnIndexRoute
   '/api/auth/email-webhook': typeof ApiAuthEmailWebhookRoute
+  '/api/cron/push-reminders': typeof ApiCronPushRemindersRoute
   '/api/cron/sync-events': typeof ApiCronSyncEventsRoute
   '/explore/event/$id': typeof ExploreEventIdRoute
   '/explore/fitness/$id': typeof ExploreFitnessIdRoute
@@ -835,6 +842,7 @@ export interface FileRoutesByTo {
   '/staff': typeof StaffIndexRoute
   '/whats-on': typeof WhatsOnIndexRoute
   '/api/auth/email-webhook': typeof ApiAuthEmailWebhookRoute
+  '/api/cron/push-reminders': typeof ApiCronPushRemindersRoute
   '/api/cron/sync-events': typeof ApiCronSyncEventsRoute
   '/explore/event/$id': typeof ExploreEventIdRoute
   '/explore/fitness/$id': typeof ExploreFitnessIdRoute
@@ -943,6 +951,7 @@ export interface FileRoutesById {
   '/staff/': typeof StaffIndexRoute
   '/whats-on/': typeof WhatsOnIndexRoute
   '/api/auth/email-webhook': typeof ApiAuthEmailWebhookRoute
+  '/api/cron/push-reminders': typeof ApiCronPushRemindersRoute
   '/api/cron/sync-events': typeof ApiCronSyncEventsRoute
   '/explore/event/$id': typeof ExploreEventIdRoute
   '/explore/fitness/$id': typeof ExploreFitnessIdRoute
@@ -1052,6 +1061,7 @@ export interface FileRouteTypes {
     | '/staff/'
     | '/whats-on/'
     | '/api/auth/email-webhook'
+    | '/api/cron/push-reminders'
     | '/api/cron/sync-events'
     | '/explore/event/$id'
     | '/explore/fitness/$id'
@@ -1156,6 +1166,7 @@ export interface FileRouteTypes {
     | '/staff'
     | '/whats-on'
     | '/api/auth/email-webhook'
+    | '/api/cron/push-reminders'
     | '/api/cron/sync-events'
     | '/explore/event/$id'
     | '/explore/fitness/$id'
@@ -1263,6 +1274,7 @@ export interface FileRouteTypes {
     | '/staff/'
     | '/whats-on/'
     | '/api/auth/email-webhook'
+    | '/api/cron/push-reminders'
     | '/api/cron/sync-events'
     | '/explore/event/$id'
     | '/explore/fitness/$id'
@@ -1347,6 +1359,7 @@ export interface RootRouteChildren {
   SocialIndexRoute: typeof SocialIndexRoute
   WhatsOnIndexRoute: typeof WhatsOnIndexRoute
   ApiAuthEmailWebhookRoute: typeof ApiAuthEmailWebhookRoute
+  ApiCronPushRemindersRoute: typeof ApiCronPushRemindersRoute
   ApiCronSyncEventsRoute: typeof ApiCronSyncEventsRoute
   ExploreEventIdRoute: typeof ExploreEventIdRoute
   ExploreFitnessIdRoute: typeof ExploreFitnessIdRoute
@@ -1976,6 +1989,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthEmailWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/push-reminders': {
+      id: '/api/cron/push-reminders'
+      path: '/api/cron/push-reminders'
+      fullPath: '/api/cron/push-reminders'
+      preLoaderRoute: typeof ApiCronPushRemindersRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/cron/sync-events': {
       id: '/api/cron/sync-events'
       path: '/api/cron/sync-events'
@@ -2251,6 +2271,7 @@ const rootRouteChildren: RootRouteChildren = {
   SocialIndexRoute: SocialIndexRoute,
   WhatsOnIndexRoute: WhatsOnIndexRoute,
   ApiAuthEmailWebhookRoute: ApiAuthEmailWebhookRoute,
+  ApiCronPushRemindersRoute: ApiCronPushRemindersRoute,
   ApiCronSyncEventsRoute: ApiCronSyncEventsRoute,
   ExploreEventIdRoute: ExploreEventIdRoute,
   ExploreFitnessIdRoute: ExploreFitnessIdRoute,

@@ -866,16 +866,14 @@ export async function acceptInvite(userDb: Db, userId: string, code: string): Pr
  * wired up, so "notify" writes a row into each participant's in-app inbox and
  * nothing else. Nothing here claims a push was sent.
  */
-async function notifyAudience(
+/** Active cohort members a piece of content is aimed at ("everyone", or its groups/individuals). */
+export async function resolveAudienceUserIds(
+  db: Db,
   cohortId: string,
   audienceKind: string,
   subjectType: "event" | "announcement" | "vote",
   subjectId: string,
-  level: "notify" | "urgent",
-  title: string,
-  body: string | null,
-) {
-  const db = await adminDb();
+): Promise<string[]> {
   const { data: members } = await db
     .from("programme_memberships")
     .select("user_id")
@@ -904,6 +902,20 @@ async function notifyAudience(
     }
     userIds = userIds.filter((u) => targeted.has(u));
   }
+  return userIds;
+}
+
+async function notifyAudience(
+  cohortId: string,
+  audienceKind: string,
+  subjectType: "event" | "announcement" | "vote",
+  subjectId: string,
+  level: "notify" | "urgent",
+  title: string,
+  body: string | null,
+) {
+  const db = await adminDb();
+  const userIds = await resolveAudienceUserIds(db, cohortId, audienceKind, subjectType, subjectId);
 
   if (!userIds.length) return 0;
   await db.from("programme_notifications").insert(
@@ -916,6 +928,16 @@ async function notifyAudience(
       subject_type: subjectType,
       subject_id: subjectId,
     })) as never,
+  );
+
+  // Same people, same moment: also tell their phones. Never throws.
+  const { sendPushToUsers } = await import("./push.server");
+  const { programmeSubject, clip } = await import("./push-shared");
+  const target = programmeSubject(subjectType);
+  await sendPushToUsers(
+    userIds,
+    { title, body: clip(body), url: target.url, tag: `${subjectType}-${subjectId}` },
+    target.category,
   );
   return userIds.length;
 }
@@ -2228,6 +2250,18 @@ export async function notifyOnboardingReminder(
     })) as never,
   );
   if (error) throw error;
+
+  const { sendPushToUsers } = await import("./push.server");
+  await sendPushToUsers(
+    validIds,
+    {
+      title: "Finish your onboarding checklist",
+      body: "Your programme team noticed a few items are still outstanding.",
+      url: "/programme",
+      tag: `onboarding-reminder-${cohortId}`,
+    },
+    "reminders",
+  );
   return { notified: validIds.length };
 }
 

@@ -1,6 +1,7 @@
 {
   "crons": [
     { "path": "/api/cron/sync-events?provider=secret_tel_aviv", "schedule": "0 6 * * *" },
-    { "path": "/api/cron/sync-events?provider=nbn", "schedule": "30 6 * * *" }
+    { "path": "/api/cron/sync-events?provider=nbn", "schedule": "30 6 * * *" },
+    { "path": "/api/cron/push-reminders?job=checklist", "schedule": "0 5 * * *" }
   ]
 }
