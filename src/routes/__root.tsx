@@ -103,6 +103,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
+      { name: "theme-color", content: "#010e60" },
+      { name: "apple-mobile-web-app-title", content: "Shekk" },
       { name: "impact-site-verification", value: "de536f76-ea4e-4828-b5e2-2c4499cedc97" },
       { title: "Shekk — everything you need for your year in Israel" },
       {
@@ -129,6 +131,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { rel: "stylesheet", href: appCss },
       { rel: "icon", href: "/favicon.png", type: "image/png" },
+      { rel: "apple-touch-icon", href: "/apple-touch-icon.png" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
     ],
   }),
   shellComponent: RootShell,
