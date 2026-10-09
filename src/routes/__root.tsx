@@ -105,6 +105,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { name: "theme-color", content: "#010e60" },
       { name: "apple-mobile-web-app-title", content: "Shekk" },
+      { name: "mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-capable", content: "yes" },
+      { name: "apple-mobile-web-app-status-bar-style", content: "black" },
       { name: "impact-site-verification", value: "de536f76-ea4e-4828-b5e2-2c4499cedc97" },
       { title: "Shekk — everything you need for your year in Israel" },
       {

@@ -4,7 +4,7 @@
   "description": "Everything you need for your year in Israel: your programme, setup essentials and daily life in one app.",
   "start_url": "/",
   "scope": "/",
-  "display": "browser",
+  "display": "standalone",
   "background_color": "#010e60",
   "theme_color": "#010e60",
   "icons": [
