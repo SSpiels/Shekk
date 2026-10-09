@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Panel, PageTitle, Toggle, Pill } from "@/components/admin/AdminUI";
-import { useAdminConfig, clearAdminSession } from "@/lib/admin";
+import { useAdminConfig } from "@/lib/admin";
 import { PARTNERS } from "@/lib/banking";
 
 export const Route = createFileRoute("/admin/controls")({
@@ -87,25 +87,15 @@ function Controls() {
             >
               Reset all overrides
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                clearAdminSession();
-                window.location.href = "/admin";
-              }}
-              className="rounded-xl bg-ink px-4 py-2 text-sm font-bold text-ink-foreground"
-            >
-              Lock console
-            </button>
           </div>
           {note ? <p className="mt-3 text-xs font-semibold text-success">{note}</p> : null}
         </Panel>
 
         <Panel title="Access">
           <p className="text-sm text-muted-foreground">
-            The console is reachable only at <span className="font-semibold text-foreground">/admin</span> and requires
-            the operator code. It is never linked from the member app, and the session clears when the browser tab
-            closes.
+            The console lives at <span className="font-semibold text-foreground">/admin</span> and is only available to
+            signed-in accounts holding the admin role — it's checked on the server for every request. It appears in
+            Settings for those accounts only; everyone else gets an ordinary "page not found".
           </p>
         </Panel>
       </div>

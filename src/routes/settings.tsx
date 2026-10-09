@@ -22,6 +22,7 @@ import type { Settings as SettingsShape, ThemePref } from "@/lib/store";
 import { ils } from "@/lib/mock";
 import { useOnboardedGate } from "@/lib/useOnboardedGate";
 import { MONEY_ENABLED } from "@/lib/flags";
+import { useAdminSession } from "@/lib/admin-data";
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -43,7 +44,8 @@ const CITIES = ["Jerusalem", "Tel Aviv", "Beit Shemesh", "Efrat", "Tzfat", "Haif
 
 function SettingsPage() {
   const ready = useOnboardedGate();
-  const { state, setSetting, resetSettings, setFeedOptIn } = useApp();
+  const { state, setSetting, resetSettings, setFeedOptIn, signedIn } = useApp();
+  const adminSession = useAdminSession(signedIn);
   const navigate = useNavigate();
   const s = state.settings;
 
@@ -353,6 +355,7 @@ function SettingsPage() {
           <RowLink to="/terms" label="Terms & Conditions" hint="Credit terms" />
           <RowLink to="/me" label="Account & verification" hint="Your info" />
           <RowLink to="/help" label="Help & support" hint="24/7 chat" />
+          {adminSession.data?.isAdmin ? <RowLink to="/admin" label="Admin console" hint="Operators only" /> : null}
           <button
             onClick={resetSettings}
             className="tap-flat flex w-full items-center gap-3 border-t border-border p-4 text-left"

@@ -12,58 +12,6 @@ import { SERVICE_CATEGORIES, type Service, type ServiceStatus } from "./services
 import { BENEFITS, type Benefit } from "./benefits";
 import type { CurrencyCode } from "./currencies";
 
-/* ----------------------------------------------------------------- gate --- */
-
-export const ADMIN_CODE = "0161";
-const SESSION_KEY = "shekk.admin.unlocked";
-
-/** Drop the operator session (used by the console's "Lock" action). */
-export function clearAdminSession() {
-  try {
-    sessionStorage.removeItem(SESSION_KEY);
-  } catch {
-    /* ignore */
-  }
-}
-
-
-
-export function useAdminGate() {
-  const [unlocked, setUnlocked] = useState(false);
-  const [checked, setChecked] = useState(false);
-
-  useEffect(() => {
-    try {
-      setUnlocked(sessionStorage.getItem(SESSION_KEY) === "1");
-    } catch {
-      /* ignore */
-    }
-    setChecked(true);
-  }, []);
-
-  const unlock = useCallback((code: string) => {
-    if (code.trim() !== ADMIN_CODE) return false;
-    try {
-      sessionStorage.setItem(SESSION_KEY, "1");
-    } catch {
-      /* ignore */
-    }
-    setUnlocked(true);
-    return true;
-  }, []);
-
-  const lock = useCallback(() => {
-    try {
-      sessionStorage.removeItem(SESSION_KEY);
-    } catch {
-      /* ignore */
-    }
-    setUnlocked(false);
-  }, []);
-
-  return { unlocked, checked, unlock, lock };
-}
-
 /* --------------------------------------------------------------- config --- */
 
 export type Promotion = {

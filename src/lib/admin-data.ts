@@ -12,7 +12,6 @@ import {
   adminSetAccountStatus,
   adminSetHandle,
   adminSetKycStatus,
-  claimConsole,
 } from "./admin.functions";
 
 export const fromAgorot = (n: number) => n / 100;
@@ -26,22 +25,14 @@ export const minor = (code: string, amount: number) =>
 export const when = (iso: string | null | undefined) =>
   iso ? new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" }) : "—";
 
-export function useAdminSession() {
+export function useAdminSession(enabled = true) {
   const fn = useServerFn(adminSession);
   return useQuery({
     queryKey: ["admin", "session"],
     queryFn: () => fn(),
+    enabled,
     retry: false,
     staleTime: 60_000,
-  });
-}
-
-export function useClaimConsole() {
-  const fn = useServerFn(claimConsole);
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () => fn(),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin"] }),
   });
 }
 

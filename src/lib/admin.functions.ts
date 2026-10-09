@@ -29,14 +29,6 @@ export const adminSession = createServerFn({ method: "GET" })
     return { userId: context.userId, isAdmin: Boolean(data) };
   });
 
-/** First signed-in operator to claim an empty console becomes the admin. */
-export const claimConsole = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .handler(async ({ context }) => {
-    const { claimFirstAdmin } = await import("./admin.server");
-    return { isAdmin: await claimFirstAdmin(context.userId) };
-  });
-
 export const adminOverview = createServerFn({ method: "GET" })
   .middleware([requireSupabaseAuth])
   .handler(async ({ context }) => {

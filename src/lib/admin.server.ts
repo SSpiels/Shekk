@@ -332,10 +332,3 @@ export async function isAdmin(userId: string) {
   const { data } = await db.rpc("has_role", { _user_id: userId, _role: "admin" });
   return Boolean(data);
 }
-
-export async function claimFirstAdmin(userId: string) {
-  const db = await admin();
-  const { data, error } = await db.rpc("claim_first_admin", { _user_id: userId });
-  if (error) throw new Error(error.message);
-  return Boolean(data);
-}
