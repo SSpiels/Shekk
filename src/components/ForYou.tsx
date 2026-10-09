@@ -2,7 +2,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { Check, ExternalLink, RotateCw, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import { useUserContext, WEATHER_CITIES } from "@/lib/personalise";
-import { placeForCity, useLocation } from "@/lib/location";
+import { LOCATION_CITIES, placeForCity, useLocation } from "@/lib/location";
+import { useTravel } from "@/lib/useProgramme";
 import { useJewish, useWeather } from "@/lib/live";
 import { useNews } from "@/lib/news";
 import { arrangeWidgets, type WidgetDef } from "@/lib/widgets";
@@ -359,10 +360,14 @@ export function ForYou() {
   const { prefs, togglePin, toggleHide, move, setOrder, setSize, setWeatherCity, reset } = useForYouPrefs();
   const loc = useLocation();
 
-  // A manual city pin wins; otherwise follow the live GPS fix.
+  const { travel } = useTravel();
+  const setupCity = travel.israelCity && LOCATION_CITIES.includes(travel.israelCity) ? travel.israelCity : null;
+
+  // A manual city pin wins, then the live GPS fix, then the city chosen in
+  // onboarding — so declining the location prompt doesn't leave these empty.
   const place = useMemo(
-    () => (prefs.weatherCity ? placeForCity(prefs.weatherCity) : loc.place),
-    [prefs.weatherCity, loc.place],
+    () => (prefs.weatherCity ? placeForCity(prefs.weatherCity) : (loc.place ?? (setupCity ? placeForCity(setupCity) : null))),
+    [prefs.weatherCity, loc.place, setupCity],
   );
 
   // First visit: ask for location once so the widgets have something real.
@@ -378,10 +383,11 @@ export function ForYou() {
     cityLabel: place ? (place.area ? `${place.area}, ${place.city}` : place.city) : "Israel",
     weather: weather.data ?? null,
     weatherLoading: weather.isPending && !!place,
-    weatherError: weather.isError || (!place && loc.status !== "asking"),
+    weatherError: weather.isError,
+    locationNeeded: !place && loc.status !== "asking",
     jewish: jewish.data ?? null,
     jewishLoading: jewish.isPending && !!place,
-    jewishError: jewish.isError || (!place && loc.status !== "asking"),
+    jewishError: jewish.isError,
     news: news.data?.items,
     newsLoading: news.isPending,
     newsError: news.isError,

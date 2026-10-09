@@ -75,6 +75,14 @@ const RAW_WIDGETS: WidgetDef[] = [
     build: (c) => {
       const w = c.weather;
       if (!w) {
+        if (c.locationNeeded) {
+          return {
+            headline: "Set your location",
+            sub: "Pick a city to see the weather where you are",
+            rows: [],
+            ctas: [],
+          };
+        }
         return {
           headline: c.weatherError ? "Weather unavailable" : "Getting the weather…",
           sub: c.weatherError ? `Couldn't reach the weather service for ${c.weatherCity}` : c.weatherCity,
@@ -124,6 +132,14 @@ const RAW_WIDGETS: WidgetDef[] = [
     build: (c) => {
       const j = c.jewish;
       if (!j) {
+        if (c.locationNeeded) {
+          return {
+            headline: "Set your location",
+            sub: "Pick a city for local candle-lighting and prayer times",
+            rows: [],
+            ctas: [],
+          };
+        }
         return {
           headline: c.jewishError ? "Calendar unavailable" : "Loading the luach…",
           sub: c.jewishError ? "Couldn't reach the Jewish calendar service" : c.weatherCity,

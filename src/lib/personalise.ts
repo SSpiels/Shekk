@@ -67,6 +67,8 @@ export type UserContext = {
   weather: LiveWeather | null;
   weatherLoading: boolean;
   weatherError: boolean;
+  /** No GPS fix, pinned city or onboarding city — nothing to fetch for yet. */
+  locationNeeded: boolean;
   /** Live Israeli headlines, newest first. */
   news: NewsItem[];
   newsLoading: boolean;
@@ -132,6 +134,7 @@ export type LiveInput = {
   weather: LiveWeather | null;
   weatherLoading: boolean;
   weatherError: boolean;
+  locationNeeded?: boolean;
   jewish: LiveJewish | null;
   jewishLoading: boolean;
   jewishError: boolean;
@@ -206,6 +209,7 @@ export function useUserContext(refreshKey = 0, live?: LiveInput): UserContext {
       weather,
       weatherLoading: live?.weatherLoading ?? false,
       weatherError: live?.weatherError ?? false,
+      locationNeeded: live?.locationNeeded ?? false,
       news,
       newsLoading: live?.newsLoading ?? false,
       newsError: live?.newsError ?? false,
@@ -224,6 +228,7 @@ export function useUserContext(refreshKey = 0, live?: LiveInput): UserContext {
     live?.cityLabel,
     live?.weatherLoading,
     live?.weatherError,
+    live?.locationNeeded,
     live?.jewishLoading,
     live?.jewishError,
     news,
