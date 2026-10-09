@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { FocusScreen } from "@/components/AppShell";
+import { SITE_URL } from "@/lib/site";
 import { ChevronLeft } from "lucide-react";
 
 export const Route = createFileRoute("/terms")({
@@ -13,10 +14,10 @@ export const Route = createFileRoute("/terms")({
       { property: "og:title", content: "Terms & Conditions · Shekk" },
       { property: "og:description", content: "Your Shekk account, who provides it, eligibility and identity checks." },
       { property: "og:type", content: "article" },
-      { property: "og:url", content: "https://shekel-connect.lovable.app/terms" },
+      { property: "og:url", content: `${SITE_URL}/terms` },
       { name: "twitter:card", content: "summary" },
     ],
-    links: [{ rel: "canonical", href: "https://shekel-connect.lovable.app/terms" }],
+    links: [{ rel: "canonical", href: `${SITE_URL}/terms` }],
   }),
   component: Terms,
 });

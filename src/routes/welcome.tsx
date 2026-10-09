@@ -41,6 +41,7 @@ import { CURRENCIES, type CurrencyCode } from "@/lib/currencies";
 import { useProgramme, useTravel } from "@/lib/useProgramme";
 import { INTERESTS, type InterestId } from "@/lib/journey-interests";
 import { MONEY_ENABLED } from "@/lib/flags";
+import { SITE_URL } from "@/lib/site";
 
 export const Route = createFileRoute("/welcome")({
   ssr: false,
@@ -59,9 +60,9 @@ export const Route = createFileRoute("/welcome")({
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { property: "og:url", content: "https://shekel-connect.lovable.app/welcome" },
+      { property: "og:url", content: `${SITE_URL}/welcome` },
     ],
-    links: [{ rel: "canonical", href: "https://shekel-connect.lovable.app/welcome" }],
+    links: [{ rel: "canonical", href: `${SITE_URL}/welcome` }],
   }),
   component: Welcome,
 });

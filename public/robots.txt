@@ -1,2 +1,6 @@
 User-agent: *
 Allow: /
+Disallow: /admin
+Disallow: /staff
+
+Sitemap: https://shekk.app/sitemap.xml

@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import type {} from "@tanstack/react-start";
 
-const BASE_URL = "https://shekel-connect.lovable.app";
+import { SITE_URL as BASE_URL } from "@/lib/site";
 
 interface SitemapEntry {
   path: string;

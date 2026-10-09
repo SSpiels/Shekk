@@ -15,6 +15,7 @@ import { LocationBar } from "@/components/LocationBar";
 import { useApp } from "@/lib/store";
 import { useMyHandle } from "@/lib/useSocial";
 import { Avatar } from "@/components/Avatar";
+import { SITE_URL } from "@/lib/site";
 import { useProfile } from "@/lib/useProfile";
 import { useOnboardedGate } from "@/lib/useOnboardedGate";
 import { useSetup } from "@/lib/useSetup";
@@ -43,10 +44,10 @@ export const Route = createFileRoute("/")({
           "Programme schedule and updates, activities, Israel setup, services and everyday tools for your year in Israel.",
       },
       { property: "og:type", content: "website" },
-      { property: "og:url", content: "https://shekel-connect.lovable.app/" },
+      { property: "og:url", content: `${SITE_URL}/` },
       { name: "twitter:card", content: "summary" },
     ],
-    links: [{ rel: "canonical", href: "https://shekel-connect.lovable.app/" }],
+    links: [{ rel: "canonical", href: `${SITE_URL}/` }],
   }),
   component: HomeScreen,
 });
