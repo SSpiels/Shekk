@@ -36,3 +36,6 @@ dist-ssr
 
 # Supabase CLI local link/cache state
 supabase/.temp/
+
+# Personal Claude Code permission rules
+.claude/settings.local.json
