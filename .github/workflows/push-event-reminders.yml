@@ -1,0 +1,30 @@
+# "Starting soon" push reminders for programme events.
+#
+# Vercel's Hobby plan only allows daily cron jobs, so this calls the reminders
+# endpoint every 15 minutes instead. The endpoint is idempotent (each person is
+# notified about each event at most once), so extra or retried runs are harmless.
+#
+# Inert until the repository has a CRON_SECRET secret (the same value as the
+# CRON_SECRET environment variable on Vercel). Optionally set an APP_URL
+# repository variable to override the default address below.
+
+name: Push event reminders
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    env:
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      APP_URL: ${{ vars.APP_URL || 'https://shekk-iota.vercel.app' }}
+    steps:
+      - name: Call the reminders endpoint
+        if: ${{ env.CRON_SECRET != '' }}
+        run: |
+          curl --fail --silent --show-error --max-time 60 \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${APP_URL}/api/cron/push-reminders?job=events"
