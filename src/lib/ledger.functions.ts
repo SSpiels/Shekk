@@ -4,7 +4,12 @@
  * Thin wrappers only — every helper lives in `ledger.server.ts`. Each function
  * is authenticated, and the member is taken from the verified token, never
  * from anything the client sends. The client can ask to spend; it can never
- * state a balance.
+ * state a balance, and it can never ask for money to be credited: there is
+ * deliberately no function here that does. Credits exist only inside the
+ * verified top-up webhook and member-to-member transfers, and the database
+ * refuses a credit from anywhere else (see the ledger_credit_lockdown
+ * migration). Every function that moves money also checks the server-side
+ * switch first (money-gate.server.ts).
  */
 
 import { createServerFn } from "@tanstack/react-start";
@@ -36,6 +41,7 @@ export const spendMoney = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data, context }) => {
+    (await import("./money-gate.server")).assertMoneyEnabled();
     const { post } = await import("./ledger.server");
     return post(context.userId, {
       direction: "debit",
@@ -44,33 +50,6 @@ export const spendMoney = createServerFn({ method: "POST" })
       category: data.category,
       icon: data.icon,
       externalRef: data.externalRef,
-      idempotencyKey: data.idempotencyKey,
-    });
-  });
-
-export const receiveMoney = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .inputValidator((data) =>
-    z
-      .object({
-        amount: shekels,
-        merchant: label,
-        category: label.default("Friends"),
-        icon: z.string().max(8).default("👥"),
-        counterparty: z.string().max(120).nullish(),
-        idempotencyKey: z.string().max(120).nullish(),
-      })
-      .parse(data),
-  )
-  .handler(async ({ data, context }) => {
-    const { post } = await import("./ledger.server");
-    return post(context.userId, {
-      direction: "credit",
-      shekels: data.amount,
-      merchant: data.merchant,
-      category: data.category,
-      icon: data.icon,
-      counterparty: data.counterparty,
       idempotencyKey: data.idempotencyKey,
     });
   });
@@ -90,6 +69,7 @@ export const holdMoney = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data, context }) => {
+    (await import("./money-gate.server")).assertMoneyEnabled();
     const { createHold } = await import("./ledger.server");
     return createHold(context.userId, {
       shekels: data.amount,
@@ -107,6 +87,7 @@ export const settleHoldFn = createServerFn({ method: "POST" })
     z.object({ holdId: z.string().uuid(), finalAmount: shekels.optional() }).parse(data),
   )
   .handler(async ({ data, context }) => {
+    (await import("./money-gate.server")).assertMoneyEnabled();
     const { settleHold } = await import("./ledger.server");
     return settleHold(context.userId, data.holdId, data.finalAmount);
   });

@@ -156,6 +156,7 @@ function rethrow(message: string, fallback: string): never {
     "event not found",
     "quantity must be at least 1",
   ];
+  if (message.includes("payments are not enabled")) throw new Error("Payments aren't available yet");
   if (message.includes("insufficient balance")) throw new Error("Not enough money in your account");
   if (message.includes("account is frozen")) throw new Error("This account is frozen");
   if (message.includes("account is closed")) throw new Error("This account is closed");

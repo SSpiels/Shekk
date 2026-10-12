@@ -53,6 +53,7 @@ export const startTopUp = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data, context }) => {
+    (await import("./money-gate.server")).assertMoneyEnabled();
     const { isConfigured, createPaymentIntent } = await import("./airwallex.server");
     if (!isConfigured()) return { connected: false as const };
     await requireOpenIlsAccount(context.userId, context.claims?.email as string | undefined);
@@ -114,6 +115,7 @@ export const issueCard = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data, context }) => {
+    (await import("./money-gate.server")).assertMoneyEnabled();
     await requireOpenIlsAccount(context.userId, data.email);
     const { isConfigured, createCardholder, createCard } = await import("./airwallex.server");
     if (!isConfigured()) return { connected: false as const };

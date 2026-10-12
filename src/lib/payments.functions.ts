@@ -46,6 +46,8 @@ export const createMembershipCheckout = createServerFn({ method: "POST" })
     return data;
   })
   .handler(async ({ data, context }): Promise<CheckoutSessionResult> => {
+    const gate = await import("./money-gate.server");
+    if (!gate.moneyEnabledOnServer()) return { error: gate.MONEY_DISABLED_MESSAGE };
     try {
       const { supabase, userId } = context;
       const {

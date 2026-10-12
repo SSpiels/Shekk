@@ -338,8 +338,15 @@ export async function joinWithCode(userDb: Db, userId: string, code: string): Pr
   return readProgramme(userDb, userId);
 }
 
+/**
+ * Members cannot write their own membership row through the API (that is what
+ * let a student rewrite their cohort), so leaving is a server action: the
+ * caller is the verified user from the auth middleware, and the update can only
+ * ever touch that user's own active membership.
+ */
 export async function leaveProgramme(db: Db, userId: string): Promise<ProgrammeState> {
-  const { error } = await db
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { error } = await (supabaseAdmin as unknown as Db)
     .from("programme_memberships")
     .update({ status: "left" } as never)
     .eq("user_id", userId)

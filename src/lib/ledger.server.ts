@@ -96,6 +96,7 @@ async function admin() {
 function rethrow(error: { message: string } | null, fallback: string): void {
   if (!error) return;
   const msg = error.message ?? "";
+  if (msg.includes("payments are not enabled")) throw new Error("Payments aren't available yet");
   if (msg.includes("insufficient balance")) throw new Error("Not enough money in your account");
   if (msg.includes("account is frozen")) throw new Error("This account is frozen");
   if (msg.includes("account is closed")) throw new Error("This account is closed");
@@ -158,7 +159,8 @@ export async function readSnapshot(userId: string, limit = 60): Promise<LedgerSn
 /* ----------------------------------------------------------------- writes --- */
 
 export type PostInput = {
-  direction: "credit" | "debit";
+  /** Debit only: credits are created solely by funding_settle and transfer_post. */
+  direction: "debit";
   shekels: number;
   merchant: string;
   category?: string;

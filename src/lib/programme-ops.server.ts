@@ -777,8 +777,10 @@ export async function joinWithCode(userDb: Db, userId: string, code: string): Pr
   return readHub(userDb, userId);
 }
 
+/** See programme.server.ts: leaving is a server action, scoped to the verified caller's own active membership. */
 export async function leaveProgramme(db: Db, userId: string): Promise<ProgrammeHub> {
-  const { error } = await db
+  const service = await adminDb();
+  const { error } = await service
     .from("programme_memberships")
     .update({ status: "left" } as never)
     .eq("user_id", userId)

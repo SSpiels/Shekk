@@ -7,8 +7,6 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   getLedger,
   spendMoney,
-  receiveMoney,
-  
   holdMoney,
   settleHoldFn,
   releaseHoldFn,
@@ -238,7 +236,6 @@ type Ctx = {
   completeOnboarding: (p: OnboardingPayload) => void;
 
   spend: (merchant: string, category: string, amount: number, icon: string) => void;
-  receive: (merchant: string, amount: number, icon: string) => void;
   sendMoney: (to: string, amount: number, note?: string) => void;
   triggerReverify: () => void;
   completeReverify: () => void;
@@ -567,30 +564,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         balance: +(s.balance - amount).toFixed(2),
         txns: [
           { id: `tx${Date.now()}`, merchant, category, amount: -amount, date: "Just now", icon },
-          ...s.txns,
-        ],
-      }));
-    },
-    receive: (merchant, amount, icon) => {
-      if (signedIn) {
-        void money(() =>
-          receiveMoney({
-            data: {
-              amount,
-              merchant,
-              category: "Friends",
-              icon,
-              idempotencyKey: `recv:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
-            },
-          }),
-        );
-        return;
-      }
-      setState((s) => ({
-        ...s,
-        balance: +(s.balance + amount).toFixed(2),
-        txns: [
-          { id: `tx${Date.now()}`, merchant, category: "Friends", amount, date: "Just now", icon },
           ...s.txns,
         ],
       }));

@@ -140,6 +140,7 @@ export const sendToFriend = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data, context }) => {
+    (await import("./money-gate.server")).assertMoneyEnabled();
     const { sendToMember } = await import("./social.server");
     return sendToMember(context.userId, data);
   });
@@ -244,6 +245,7 @@ export const paySplit = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((data) => z.object({ shareId: uuid }).parse(data))
   .handler(async ({ data, context }) => {
+    (await import("./money-gate.server")).assertMoneyEnabled();
     const { paySplitShare } = await import("./social.server");
     return paySplitShare(context.userId, data.shareId);
   });

@@ -107,6 +107,7 @@ async function admin() {
 function fail(error: { message: string } | null, fallback: string): void {
   if (!error) return;
   const msg = error.message ?? "";
+  if (msg.includes("payments are not enabled")) throw new Error("Payments aren't available yet");
   if (msg.includes("insufficient balance")) throw new Error("Not enough money in your account");
   if (msg.includes("daily sending limit")) throw new Error("You have hit today's sending limit");
   if (msg.includes("cannot send to yourself")) throw new Error("That is your own account");
