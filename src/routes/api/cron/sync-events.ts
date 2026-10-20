@@ -39,12 +39,15 @@ export const Route = createFileRoute("/api/cron/sync-events")({
         const providers = isCronProvider(requested) ? [requested] : CRON_PROVIDERS;
 
         const { syncPartnerEvents } = await import("@/lib/events-provider.server");
-        const results: Record<string, { ok: boolean; synced?: number; autoPublish?: unknown; error?: string }> = {};
+        const results: Record<
+          string,
+          { ok: boolean; synced?: number; autoPublish?: unknown; retired?: number; error?: string }
+        > = {};
 
         for (const provider of providers) {
           try {
-            const { synced, autoPublish } = await syncPartnerEvents(provider);
-            results[provider] = { ok: true, synced, autoPublish };
+            const { synced, autoPublish, retired } = await syncPartnerEvents(provider);
+            results[provider] = { ok: true, synced, autoPublish, ...(retired !== undefined ? { retired } : {}) };
           } catch (err) {
             const message = err instanceof Error ? err.message : "unknown error";
             console.error(`[cron] ${provider} sync failed:`, message);

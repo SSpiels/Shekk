@@ -30,6 +30,7 @@ export type AutoPublishSummary = {
 
 type DraftRow = {
   id: string;
+  provider_ref: string;
   title: string;
   description: string | null;
   host: string;
@@ -44,14 +45,23 @@ export function isAutoPublishEnabled(): boolean {
   return process.env.EVENTS_AUTO_PUBLISH_ENABLED === "true";
 }
 
-export async function evaluateAutoPublish(provider: string): Promise<AutoPublishSummary> {
+/**
+ * `seenRefs` (when given) limits the pass to listings the source showed in THIS
+ * sync. A draft the source no longer lists has vanished — cancelled or removed —
+ * and must not be published, or it would come back every day only to be taken
+ * down again.
+ */
+export async function evaluateAutoPublish(
+  provider: string,
+  seenRefs?: ReadonlySet<string>,
+): Promise<AutoPublishSummary> {
   const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
   const { suppressedDuplicateEventIds } = await import("./events-dedupe.server");
 
   const [{ data, error }, suppressed] = await Promise.all([
     supabaseAdmin
       .from("events")
-      .select("id, title, description, host, venue, city, starts_at, ends_at, source_category")
+      .select("id, provider_ref, title, description, host, venue, city, starts_at, ends_at, source_category")
       .eq("provider", provider)
       .eq("status", "draft"),
     suppressedDuplicateEventIds(),
@@ -63,7 +73,7 @@ export async function evaluateAutoPublish(provider: string): Promise<AutoPublish
     return { provider, evaluated: 0, wouldPublish: 0, published: 0, dryRun, decisions: [] };
   }
 
-  const rows = (data ?? []) as DraftRow[];
+  const rows = ((data ?? []) as DraftRow[]).filter((r) => !seenRefs || seenRefs.has(r.provider_ref));
   const decisions: AutoPublishDecisionLog[] = [];
   const toPublish: string[] = [];
 

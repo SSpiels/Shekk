@@ -108,7 +108,12 @@ export async function listPartnerEvents(provider: PartnerId): Promise<PartnerEve
 /** Upsert a source's listings into the catalogue, keyed on provider_ref. */
 export async function syncPartnerEvents(
   provider: PartnerId,
-): Promise<{ synced: number; autoPublish?: AutoPublishSummary; priceEnrichment?: PriceEnrichmentSummary }> {
+): Promise<{
+  synced: number;
+  autoPublish?: AutoPublishSummary;
+  retired?: number;
+  priceEnrichment?: PriceEnrichmentSummary;
+}> {
   const listings = await listPartnerEvents(provider);
   if (listings.length === 0) return { synced: 0 };
 
@@ -196,13 +201,27 @@ export async function syncPartnerEvents(
   // Shadow-evaluates (and, only when explicitly enabled, applies) the
   // auto-publish decision for this provider's draft backlog — see
   // events-auto-publish.server.ts. Never blocks or fails the sync itself.
+  // Only listings the source showed in this sync are considered, so one that has
+  // vanished is never republished.
+  const seenRefs = new Set(listings.map((l) => l.ref));
   let autoPublish: AutoPublishSummary | undefined;
+  let retired: number | undefined;
   if (reviewRequired) {
     try {
       const { evaluateAutoPublish } = await import("./events-auto-publish.server");
-      autoPublish = await evaluateAutoPublish(provider);
+      autoPublish = await evaluateAutoPublish(provider, seenRefs);
     } catch (err) {
       console.error(`[events] ${provider} auto-publish pass:`, err instanceof Error ? err.message : err);
+    }
+
+    // A scrape is the only authority on what is on: an upcoming listing that has
+    // disappeared from the source (cancelled, moved, removed) comes down by itself.
+    // Skipped unless the scrape looks healthy — see events-retire.ts.
+    try {
+      const { retireVanishedListings } = await import("./events-retire.server");
+      retired = (await retireVanishedListings(provider, seenRefs)).retired;
+    } catch (err) {
+      console.error(`[events] ${provider} retire pass:`, err instanceof Error ? err.message : err);
     }
   }
 
@@ -217,5 +236,5 @@ export async function syncPartnerEvents(
     console.error(`[events] ${provider} price enrichment pass:`, err instanceof Error ? err.message : err);
   }
 
-  return { synced: listings.length, autoPublish, priceEnrichment };
+  return { synced: listings.length, autoPublish, retired, priceEnrichment };
 }
