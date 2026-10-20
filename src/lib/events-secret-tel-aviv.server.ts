@@ -153,7 +153,13 @@ export async function listSecretTelAvivEvents(): Promise<PartnerEvent[]> {
       : null;
 
     const coverUrl = row.querySelector("td.event-image img")?.getAttribute("src") ?? null;
-    const { sourceCategory, subcategory, tags } = classifyEvent({ title, description, host: SOURCE_HOST });
+    const { sourceCategory, subcategory, tags } = classifyEvent({
+      title,
+      description,
+      host: SOURCE_HOST,
+      venue,
+      startsAt: when.startsAt,
+    });
     // The listing table itself carries no price for any row (confirmed directly,
     // not assumed) — this exists mainly for symmetry with the NBN adapter and in
     // case that ever changes. See PartnerEvent.priceInfo's own comment.

@@ -54,6 +54,10 @@ export type ClassificationInput = {
   host?: string | null;
   /** A source's own category tags, when it has them (e.g. NBN's CATEGORIES). Optional — a source without any just passes []. */
   sourceCategoryTags?: string[];
+  /** Where it is held, as the source gives it. A bar or club venue is itself a nightlife signal. */
+  venue?: string | null;
+  /** ISO start time. A bar event only counts as nightlife in the evening. */
+  startsAt?: string | null;
 };
 
 /** A source's own explicit tag, when unambiguous — nothing to infer, it says so directly. Checked before any text heuristics. */
@@ -123,12 +127,83 @@ const NIGHTLIFE_PHRASES = [
   "mingle",
   "pub crawl",
   "bar crawl",
+  // Social drinking events a young crowd goes out for. "happy hour" and "pub
+  // quiz" are bar events by definition; none of these words appear in a lecture.
+  "happy hour",
+  "pub quiz",
+  "karaoke",
+  "ladies night",
 ];
 
 /** Nightlife language in `text` — the unambiguous phrases always count; a bare "party"/"parties" only counts when nothing stronger overrides it. */
 function hasNightlifeSignal(text: string): boolean {
   if (hasAny(text, NIGHTLIFE_PHRASES)) return true;
   return hasAny(text, GENERIC_PARTY_PHRASES) && !PARTY_OVERRIDE_RE.test(text);
+}
+
+/* ----------------------------------------------------------- nightlife venues --- */
+
+/**
+ * Words that follow a name in "<Name> Bar" without being a drinking venue: a
+ * snack bar, a protein bar, a salad bar. A bar named after food or a product is
+ * not a night out.
+ */
+const NOT_A_VENUE_WORD = new Set([
+  "snack", "salad", "sushi", "juice", "coffee", "chocolate", "protein", "candy", "milk", "hummus",
+  "falafel", "shawarma", "breakfast", "mini", "sandwich", "raw", "ice", "cereal", "granola", "energy",
+  "oyster", "tapas", "smoothie", "health", "yogurt", "frozen", "gelato", "dessert", "pizza",
+]);
+
+/** A street or surname that begins with "Bar" — not a bar. ("Bar Kochva St", "Bar-Ilan"). */
+const BAR_FALSE_FRIENDS_RE = /^\s*[- ]?(kochva|ilan|yochai|mitzvah|lev|am|tikva)\b/i;
+
+/**
+ * A "<Name> Bar" / "<Name> Pub" / "<Name> Lounge": "Ezra Bar", "Uganda Bar",
+ * "Skyriders Bar". Needs a capitalised word before it, so a street ("Bar Kochva
+ * St") or the word on its own never counts.
+ */
+export function hasBarVenueName(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const re = /\b([A-Za-z][\w'’&.-]*)\s+(bar|pub|lounge)(?![-\w'’])/gi;
+  for (const m of text.matchAll(re)) {
+    const before = m[1]!;
+    if (!/^[A-Z]/.test(before)) continue; // the name must be capitalised: 'a lounge bar' is not a venue name
+    if (NOT_A_VENUE_WORD.has(before.toLowerCase())) continue;
+    const after = text.slice((m.index ?? 0) + m[0].length);
+    if (BAR_FALSE_FRIENDS_RE.test(after)) continue;
+    return true;
+  }
+  return false;
+}
+
+/** Well-known Israeli club and live-music venues whose names don't say "bar" or "club". */
+const KNOWN_NIGHTLIFE_VENUES = ["barby", "kuli alma", "teder", "radio epgb", "mike's place", "levontin 7", "abraxas", "zappa"];
+
+/** Is the event in the evening, Israel time (7pm to 4am)? Unknown when no valid time is given. */
+export function isEveningInIsrael(startsAt: string | null | undefined): boolean | null {
+  if (!startsAt) return null;
+  const t = new Date(startsAt);
+  if (Number.isNaN(t.getTime())) return null;
+  const hour =
+    Number(new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Jerusalem", hour: "2-digit", hour12: false }).format(t)) % 24;
+  return hour >= 19 || hour < 4;
+}
+
+/**
+ * Held at a bar, pub, lounge or well-known club, in the evening. A bar's
+ * daytime brunch, a lecture in a venue that happens to be named "…Bar", or an
+ * event with no time we can trust all fail the evening test and stay as they
+ * were.
+ */
+export function isNightlifeVenueEvent(input: ClassificationInput): boolean {
+  const venue = input.venue ?? "";
+  const venueLower = venue.toLowerCase();
+  const knownClub = KNOWN_NIGHTLIFE_VENUES.some((v) => new RegExp(`\\b${escapeRegExp(v)}\\b`).test(venueLower));
+  const barNamed = hasBarVenueName(venue) || hasBarVenueName(input.title);
+  if (!knownClub && !barNamed) return false;
+  const evening = isEveningInIsrael(input.startsAt);
+  // A named club is a night out even when we can't read the time; a bar needs the evening confirmed.
+  return knownClub ? evening !== false : evening === true;
 }
 
 const CONCERT_PHRASES = [
@@ -262,6 +337,10 @@ export function classifySourceCategory(input: ClassificationInput): ActivityCate
 
   if (hasNightlifeSignal(text)) return "nightlife";
   if (hasAny(text, CONCERT_PHRASES) || CONCERT_LIVE_RE.test(text)) return "concerts";
+  // After explicit live-music wording (a concert in a theatre that's also a bar
+  // stays a concert) and before food/the generic fallback: an evening at a bar
+  // or club is a night out whatever the title says ("Monad" at Uganda Bar).
+  if (isNightlifeVenueEvent(input)) return "nightlife";
   if (hasAny(text, FOOD_PHRASES)) return "food";
   if (hasAny(text, OUTDOORS_PHRASES)) return "outdoors";
   if (hasAny(text, SPORT_PHRASES)) return "sport";
@@ -366,6 +445,10 @@ export function deriveTags(input: ClassificationInput, category: ActivityCategor
   if (category !== "nightlife" && hasNightlifeSignal(text)) tags.add("nightlife");
   if (category !== "concerts" && (hasAny(text, CONCERT_PHRASES) || CONCERT_LIVE_RE.test(text))) tags.add("live_music");
 
+  const nightVenue = isNightlifeVenueEvent(input);
+  // A concert or show held at a bar is still a night out — flag it without changing its category.
+  if (category !== "nightlife" && nightVenue) tags.add("nightlife");
+  if (nightVenue && category === "nightlife") tags.add("bars");
   if (hasAny(text, BARS_PHRASES)) tags.add("bars");
   if (hasAny(text, COCKTAILS_PHRASES)) tags.add("cocktails");
   if (hasAny(text, DJ_PHRASES)) tags.add("dj_set");

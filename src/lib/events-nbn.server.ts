@@ -216,6 +216,8 @@ export async function listNbnEvents(): Promise<PartnerEvent[]> {
       description,
       host,
       sourceCategoryTags: nativeCategories,
+      venue: e.location ? decodeHtmlEntities(e.location.trim()) || null : null,
+      startsAt: occurrence.startsAt,
     });
     // Undefined (not a "kind: unknown" value) when the feed text says nothing about
     // price — see PartnerEvent.priceInfo's own comment on why that distinction matters.
