@@ -19,38 +19,42 @@ export const placesStatus = createServerFn({ method: "GET" }).handler(async () =
 });
 
 export const placesNearby = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
     z
       .object({
         lat,
         lon,
         radiusM: z.number().min(50).max(50_000),
-        placeTypes: z.array(z.string().min(1).max(60)).min(1).max(10),
+        placeTypes: z.array(z.string().min(1).max(60)).min(1).max(8),
       })
       .parse(d),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const { nearbyPlaces } = await import("@/lib/places/api.server");
-    return nearbyPlaces(data);
+    return nearbyPlaces(data, context.userId);
   });
 
 export const placesSearch = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
-    z.object({ query: z.string().min(2).max(160), lat: lat.optional(), lon: lon.optional() }).parse(d),
+    z.object({ query: z.string().trim().min(2).max(120), lat: lat.optional(), lon: lon.optional() }).parse(d),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const { searchPlaces } = await import("@/lib/places/api.server");
-    return searchPlaces(data);
+    return searchPlaces(data, context.userId);
   });
 
 export const placeDetail = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ id: placeId }).parse(d))
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const { placeDetails } = await import("@/lib/places/api.server");
-    return placeDetails(data.id);
+    return placeDetails(data.id, context.userId);
   });
 
 export const placePhotoUrl = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
     z
       .object({
@@ -59,12 +63,13 @@ export const placePhotoUrl = createServerFn({ method: "POST" })
       })
       .parse(d),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const { placePhoto } = await import("@/lib/places/api.server");
-    return { url: await placePhoto(data.photoName, data.maxWidthPx ?? 800) };
+    return { url: await placePhoto(data.photoName, context.userId, data.maxWidthPx ?? 800) };
   });
 
 export const placesTravel = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) =>
     z
       .object({
@@ -76,9 +81,23 @@ export const placesTravel = createServerFn({ method: "POST" })
       })
       .parse(d),
   )
-  .handler(async ({ data }) => {
+  .handler(async ({ data, context }) => {
     const { travelTo } = await import("@/lib/places/api.server");
-    return travelTo(data);
+    return travelTo(data, context.userId);
+  });
+
+/**
+ * Permission to create ONE Google map in the browser. Each map the browser
+ * creates is a billable "map load", and that happens on Google's servers where
+ * we cannot count it, so the page asks here first and only builds the map when
+ * the budget allows. A refusal means "show the list instead".
+ */
+export const placesMapPermit = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context }) => {
+    const { takeBudget } = await import("@/lib/places/guard.server");
+    await takeBudget("maploads", context.userId);
+    return { ok: true as const };
   });
 
 /* ---------------------------------------------------------------- saved ---- */

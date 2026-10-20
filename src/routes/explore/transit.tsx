@@ -264,7 +264,7 @@ function GettingAround() {
         ) : ready === true ? (
           destination ? (
             <JourneyResults origin={origin} destination={destination} />
-          ) : term.trim().length >= 2 ? (
+          ) : term.trim().length >= 3 ? (
             <DestinationResults query={term} origin={origin} onSelect={chooseDestination} />
           ) : (
             <EmptyState
@@ -542,7 +542,7 @@ function DestinationResults({
     categories: [],
     query,
     radiusM: 50_000,
-    enabled: query.trim().length >= 2,
+    enabled: query.trim().length >= 3,
   });
 
   if (feed.error) return <PlacesError message={feed.error} />;

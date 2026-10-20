@@ -9,6 +9,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { decodePolyline } from "@/lib/places/format";
+import { placesMapPermit } from "@/lib/places/places.functions";
 import type { PlaceRef, RouteBounds } from "@/lib/places/types";
 
 /** Approximations of the Shekk primary/muted tokens as plain hex — Maps'
@@ -195,7 +196,12 @@ export function GoogleMapCanvas({
   useEffect(() => {
     let dead = false;
     loadMaps()
-      .then(() => {
+      .then(async () => {
+        if (dead || !host.current || map.current) return;
+        // Every map created is a billable "map load" counted on Google's side,
+        // so ask the server first. A refusal (signed out, daily budget spent,
+        // switch off) throws into the catch below and the list view carries on.
+        await placesMapPermit();
         if (dead || !host.current || map.current) return;
         map.current = new window.google!.maps.Map(host.current, {
           center: { lat: centre.lat, lng: centre.lon },
@@ -220,7 +226,7 @@ export function GoogleMapCanvas({
         });
       })
       .catch(() => {
-        /* no key or blocked referrer — the list view carries the screen */
+        /* no key, blocked referrer or no map budget — the list view carries the screen */
       });
     return () => {
       dead = true;

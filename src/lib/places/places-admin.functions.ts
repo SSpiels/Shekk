@@ -50,7 +50,7 @@ export const adminVenueSearchGoogle = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     const { assertAdmin, findPlacesForAdmin } = await import("./admin.server");
     await assertAdmin(context);
-    return findPlacesForAdmin(data.query);
+    return findPlacesForAdmin(data.query, context.userId);
   });
 
 export const adminVenueSave = createServerFn({ method: "POST" })

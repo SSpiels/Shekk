@@ -256,6 +256,7 @@ describe("Google row mapping", () => {
 
   beforeEach(() => {
     process.env["GOOGLE_MAPS_API_KEY"] = "test-connection";
+    process.env["GOOGLE_PLACES_ENABLED"] = "true";
   });
 
   afterEach(() => {
@@ -309,19 +310,54 @@ describe("Google row mapping", () => {
     expect(photo.authors[0]).toMatchObject({ displayName: "A Local" });
   });
 
-  it("asks Google for photo attribution fields", async () => {
+  it("asks for photo attribution fields on a place's detail view only — never on lists", async () => {
     const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
       ok: true,
       status: 200,
-      json: async () => ({ places: [] }),
+      json: async () => ({ places: [], id: "p" }),
     }));
     vi.stubGlobal("fetch", fetchMock);
-    const { nearbyRows } = await import("./google.server");
+    const { nearbyRows, searchRows, detailRow } = await import("./google.server");
     await nearbyRows({ lat: 31.7, lon: 35.2, radiusM: 1000, placeTypes: ["gym"] });
-    const init = fetchMock.mock.calls[0]![1] as unknown as { headers: Record<string, string> };
-    const mask = init.headers["X-Goog-FieldMask"]!;
-    expect(mask).toContain("photos.authorAttributions");
-    expect(mask).toContain("photos.googleMapsUri");
+    await searchRows({ query: "gym" });
+    await detailRow("p");
+    const maskOf = (i: number) =>
+      (fetchMock.mock.calls[i]![1] as unknown as { headers: Record<string, string> }).headers["X-Goog-FieldMask"]!;
+    // photos are a separate, dear billable call per image — lists must not ask for them
+    expect(maskOf(0)).not.toContain("photos");
+    expect(maskOf(1)).not.toContain("photos");
+    expect(maskOf(2)).toContain("photos.authorAttributions");
+    expect(maskOf(2)).toContain("photos.googleMapsUri");
+  });
+
+  it("asks for a plain (traffic-unaware) estimate for driving, and only for driving", async () => {
+    const fetchMock = vi.fn(async (_url: string, _init: RequestInit) => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ routes: [{ duration: "600s", distanceMeters: 2000 }] }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const { travelLeg } = await import("./google.server");
+    const base = { fromLat: 31.7, fromLon: 35.2, toLat: 31.8, toLon: 35.3 };
+    for (const mode of ["WALK", "TRANSIT", "DRIVE"] as const) await travelLeg({ ...base, mode });
+    const bodyOf = (i: number) => JSON.parse(String((fetchMock.mock.calls[i]![1] as { body: string }).body));
+    expect(bodyOf(0).routingPreference).toBeUndefined();
+    expect(bodyOf(1).routingPreference).toBeUndefined();
+    expect(bodyOf(2).routingPreference).toBe("TRAFFIC_UNAWARE");
+  });
+
+  it("will not call Google while the master switch is off, even with a valid key", async () => {
+    delete process.env["GOOGLE_PLACES_ENABLED"];
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { nearbyRows, googleConfigured } = await import("./google.server");
+    expect(googleConfigured()).toBe(false);
+    await expect(nearbyRows({ lat: 31.7, lon: 35.2, radiusM: 1000, placeTypes: ["gym"] })).rejects.toThrow(
+      /switched on/i,
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+    process.env["GOOGLE_PLACES_ENABLED"] = "yes"; // only the exact string "true" counts
+    expect(googleConfigured()).toBe(false);
   });
 
   it("calls Google directly, not through a third-party gateway", async () => {

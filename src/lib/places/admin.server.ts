@@ -186,9 +186,11 @@ export async function markVenueVerified(placeId: string): Promise<VenueMetaAdmin
  */
 export async function findPlacesForAdmin(
   query: string,
+  userId: string,
 ): Promise<{ id: string; name: string; address: string; city: string | null }[]> {
   const { searchPlaces } = await import("./api.server");
-  const rows = await searchPlaces({ query });
+  // Same metered budget as every member search — an operator is not exempt.
+  const rows = await searchPlaces({ query }, userId);
   return rows.map((p) => ({
     id: p.id,
     name: p.name,

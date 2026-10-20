@@ -20,6 +20,7 @@ export function PlaceCard({
   onSelect,
   onSave,
   photo = true,
+  loadPhoto = false,
   footer,
 }: {
   place: Place;
@@ -28,6 +29,12 @@ export function PlaceCard({
   onSelect?: () => void;
   onSave?: () => void;
   photo?: boolean;
+  /**
+   * Fetch the place's Google photo for this card. Off by default: every photo is
+   * a separate billable request, so list cards show the category emoji and only
+   * a single place's detail view loads a real photo.
+   */
+  loadPhoto?: boolean;
   footer?: ReactNode;
 }) {
   const open = openLabel(place.hours.openNow);
@@ -38,7 +45,7 @@ export function PlaceCard({
       <div className="flex items-start gap-3">
         {photo && (
           <PlacePhoto
-            {...(place.photos[0] ? { photo: place.photos[0] } : {})}
+            {...(loadPhoto && place.photos[0] ? { photo: place.photos[0] } : {})}
             alt={place.name}
             emoji={emojiFor(place.types)}
             className="size-16 shrink-0 rounded-xl"

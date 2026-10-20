@@ -15,13 +15,19 @@
  * minutes and never written to the database. Only the place id is storable.
  */
 
+import { PLACES_MESSAGES, placesSwitchOn } from "./guard.server";
 import type { JourneyStep, PhotoRef, Place, RouteBounds, TransitVehicle, TravelLeg, TravelMode } from "./types";
 
 const PLACES_HOST = "https://places.googleapis.com";
 const ROUTES_HOST = "https://routes.googleapis.com";
 
+/**
+ * "Configured" means usable: a key exists AND the master switch is on. With the
+ * switch off every screen shows its normal "not connected" fallback and no
+ * request is ever sent.
+ */
 export function googleConfigured() {
-  return Boolean(process.env["GOOGLE_MAPS_API_KEY"]);
+  return Boolean(process.env["GOOGLE_MAPS_API_KEY"]) && placesSwitchOn();
 }
 
 function headers(fieldMask?: string) {
@@ -38,9 +44,12 @@ async function call<T>(
   path: string,
   init: RequestInit & { fieldMask?: string },
 ): Promise<T> {
-  if (!googleConfigured()) {
+  if (!process.env["GOOGLE_MAPS_API_KEY"]) {
     throw new Error("Places needs the Google Maps connection — it isn't linked yet.");
   }
+  // Last line of defence: even a caller that skipped the budget guard cannot
+  // reach Google while the master switch is off.
+  if (!placesSwitchOn()) throw new Error(PLACES_MESSAGES.off);
   const res = await fetch(`${host}${path}`, { ...init, headers: headers(init.fieldMask) });
   if (res.status === 403) {
     const body = (await res.json().catch(() => ({}))) as {
@@ -106,11 +115,14 @@ const PRICE_LEVELS: Record<string, number> = {
 
 const PHOTO_FIELDS = "photos.name,photos.googleMapsUri,photos.flagContentUri,photos.authorAttributions";
 
+/**
+ * List results carry NO photos. A photo is a separate, much dearer billable call
+ * per image (it was the whole £200 of the first trial credit), so list cards show
+ * the category emoji and a photo is only ever loaded on a single place's detail
+ * view — see DETAIL_MASK.
+ */
 const LIST_MASK =
-  "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.currentOpeningHours.openNow,places.priceLevel,places.types," +
-  PHOTO_FIELDS.split(",")
-    .map((f) => `places.${f}`)
-    .join(",");
+  "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.userRatingCount,places.currentOpeningHours.openNow,places.priceLevel,places.types";
 
 const DETAIL_MASK =
   "id,displayName,formattedAddress,location,rating,userRatingCount,currentOpeningHours,regularOpeningHours,priceLevel,types,nationalPhoneNumber,internationalPhoneNumber,websiteUri,googleMapsUri," +
@@ -369,6 +381,10 @@ export async function travelLeg(input: {
         destination: { location: { latLng: { latitude: input.toLat, longitude: input.toLon } } },
         travelMode: input.mode,
         languageCode: "en",
+        // Driving defaults to live-traffic routing, which bills at a higher tier
+        // with a smaller free allowance. A plain estimate is all Shekk shows, so
+        // ask for it explicitly. (The field is only valid for DRIVE.)
+        ...(input.mode === "DRIVE" ? { routingPreference: "TRAFFIC_UNAWARE" } : {}),
       }),
     });
     const route = json.routes?.[0];

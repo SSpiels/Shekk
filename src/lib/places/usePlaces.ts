@@ -34,10 +34,30 @@ import {
 } from "./places.functions";
 
 /**
- * Google-derived results are never treated as a reusable cache: always refetch
- * on use, and drop the response seconds after the last consumer unmounts.
+ * Google-derived results are held in memory only — never persisted — and dropped
+ * a minute after the last consumer unmounts. Every Google call is billed (and
+ * metered by the server), so nothing here may refetch on its own: a screen that
+ * remounts, a window that regains focus or a connection that comes back must not
+ * trigger a fresh paid request. A repeat within the minute reuses the answer.
  */
-const GOOGLE_QUERY = { staleTime: 0, gcTime: 5_000, refetchOnMount: "always" } as const;
+const GOOGLE_QUERY = {
+  staleTime: 60_000,
+  gcTime: 60_000,
+  refetchOnMount: true,
+  refetchOnWindowFocus: false,
+  refetchOnReconnect: false,
+  // A failed or refused request is never retried: each retry is another paid call.
+  retry: false,
+} as const;
+
+/** Turn a raw server error into something a member can act on. */
+export function friendlyPlacesError(error: unknown): string | null {
+  if (!(error instanceof Error)) return null;
+  const m = error.message;
+  if (/^Unauthorized/i.test(m)) return "Sign in to search places and plan journeys.";
+  if (/limit for today|reached its limit|switched on|paused/i.test(m)) return m;
+  return m;
+}
 
 /** Is the Google Maps connection wired up for this project? */
 export function usePlacesReady() {
@@ -82,10 +102,10 @@ export function usePlacesFeed(options: NearbyOptions) {
   const search = useServerFn(placesSearch);
 
   const rawQuery = (options.query ?? "").trim();
-  const query = useDebounced(rawQuery, 450);
+  const query = useDebounced(rawQuery, 700);
   const at: LatLon | null = place ? { lat: place.lat, lon: place.lon } : null;
   const placeTypes = useMemo(() => placeTypesFor(options.categories), [options.categories]);
-  const textSearch = query.length >= 2;
+  const textSearch = query.length >= 3;
 
   const result = useQuery<Place[]>({
     queryKey: [
@@ -97,7 +117,6 @@ export function usePlacesFeed(options: NearbyOptions) {
     ],
     enabled: (options.enabled ?? true) && ready === true && (textSearch || Boolean(at)),
     ...GOOGLE_QUERY,
-    retry: 1,
     queryFn: async () => {
       const rows = textSearch
         ? await search({
@@ -114,7 +133,7 @@ export function usePlacesFeed(options: NearbyOptions) {
   return {
     places: result.data ?? [],
     loading: result.isFetching,
-    error: result.error instanceof Error ? result.error.message : null,
+    error: friendlyPlacesError(result.error),
     refetch: result.refetch,
     ready,
     at,
@@ -142,7 +161,7 @@ export function usePlaceDetail(id: string) {
   return {
     place: data,
     loading: query.isLoading,
-    error: query.error instanceof Error ? query.error.message : null,
+    error: friendlyPlacesError(query.error),
     ready,
   };
 }
@@ -182,7 +201,7 @@ export function useTravelTo(to: LatLon | null, modes?: ("WALK" | "TRANSIT" | "DR
   return {
     travel: query.data ?? null,
     loading: query.isFetching,
-    error: query.error instanceof Error ? query.error.message : null,
+    error: friendlyPlacesError(query.error),
   };
 }
 
@@ -205,6 +224,8 @@ export function usePlacePhoto(photoName: string | undefined, maxWidthPx = 800) {
     // after use — just not force-refetched within this short window.
     staleTime: 60_000,
     gcTime: 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     retry: false,
     queryFn: () => resolve({ data: { photoName: photoName!, maxWidthPx } }),
   });
