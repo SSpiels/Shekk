@@ -52,6 +52,8 @@ export const getSimPlan = createServerFn({ method: "POST" })
 export const submitSimAnswers = createServerFn({ method: "POST" })
   .inputValidator((data) => z.object({ answers: answersSchema }).parse(data))
   .handler(async ({ data }) => {
+    // Works signed out, so it is capped per caller to stop junk rows being written in bulk.
+    await (await import("./open-endpoints.server")).assertOpenBudget("simanswers");
     const { getSessionUserId } = await import("./sim-session.server");
     const { saveRecommendation } = await import("./sim.server");
     return saveRecommendation(await getSessionUserId(), data.answers);
@@ -68,6 +70,7 @@ export const startSimHandoff = createServerFn({ method: "POST" })
       .parse(data),
   )
   .handler(async ({ data }) => {
+    await (await import("./open-endpoints.server")).assertOpenBudget("simhandoff");
     const { getSessionUserId } = await import("./sim-session.server");
     const { recordHandoff } = await import("./sim.server");
     return recordHandoff({

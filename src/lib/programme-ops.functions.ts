@@ -292,6 +292,10 @@ export const programmeLeave = createServerFn({ method: "POST" })
 export const programmeCodePreview = createServerFn({ method: "POST" })
   .inputValidator((d: unknown) => z.object({ code }).parse(d))
   .handler(async ({ data }) => {
+    // Open to anyone, and a code is a secret worth guessing, so every attempt is
+    // counted. Unlike a harmless lookup this FAILS CLOSED: if the budget cannot be
+    // checked, no code is tried.
+    await (await import("@/lib/open-endpoints.server")).assertOpenBudget("codepreview");
     const { previewJoinCode, previewInvite } = await import("@/lib/programme-ops.server");
     const join = await previewJoinCode(data.code);
     if (join) return { kind: "cohort" as const, cohort: join, invite: null };
@@ -304,6 +308,8 @@ export const programmeJoin = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ code }).parse(d))
   .handler(async ({ data, context }) => {
+    // Joining by code is also a way to guess codes (a right guess gets you in).
+    await (await import("@/lib/open-endpoints.server")).assertOpenBudget("codepreview");
     const { joinWithCode } = await import("@/lib/programme-ops.server");
     return joinWithCode(context.supabase, context.userId, data.code);
   });
@@ -312,6 +318,7 @@ export const programmeAcceptInvite = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((d: unknown) => z.object({ code }).parse(d))
   .handler(async ({ data, context }) => {
+    await (await import("@/lib/open-endpoints.server")).assertOpenBudget("codepreview");
     const { acceptInvite } = await import("@/lib/programme-ops.server");
     return acceptInvite(context.supabase, context.userId, data.code);
   });

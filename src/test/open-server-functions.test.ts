@@ -40,16 +40,16 @@ const ALLOWED_OPEN = [
   "airwallexStatus", // a yes/no flag
   "getIsraelNews", // public news headlines
   "getJewishToday", // public Hebcal calendar data
-  "getPlaceName", // reverse geocoding for the location bar — follow-up: throttle + cache
+  "getPlaceName", // reverse geocoding for the location bar — cached and budgeted
   "getSimPlan", // public eSIM plan details
-  "getWeather", // public weather — follow-up: throttle + cache
+  "getWeather", // public weather — cached and budgeted
   "gettStatusFn", // a yes/no flag
   "listSimPlans", // public eSIM catalogue
   "liveFxRate", // public reference rate, returns nothing when unconfigured
   "placesStatus", // a yes/no flag; never calls Google
-  "programmeCodePreview", // join-code lookup before sign-up — follow-up: stop leaking the cohort id, throttle
-  "startSimHandoff", // affiliate hand-off — follow-up: throttle
-  "submitSimAnswers", // eSIM questionnaire — follow-up: throttle
+  "programmeCodePreview", // join-code lookup before sign-up — every attempt counted, fails closed, no internal ids returned
+  "startSimHandoff", // affiliate hand-off — capped per caller
+  "submitSimAnswers", // eSIM questionnaire — capped per caller
 ].sort();
 
 describe("server functions open to anyone", () => {

@@ -49,15 +49,18 @@ export const getMyProgramme = createServerFn({ method: "POST" })
 export const previewProgrammeCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => codeSchema.parse(input))
-  .handler(async ({ data, context }) => {
+  .handler(async ({ data }) => {
+    // Same attempt budget as the public preview: a code is worth guessing.
+    await (await import("@/lib/open-endpoints.server")).assertOpenBudget("codepreview");
     const { previewCode } = await import("@/lib/programme.server");
-    return previewCode(context.supabase, data.code);
+    return previewCode(data.code);
   });
 
 export const joinProgrammeWithCode = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) => codeSchema.parse(input))
   .handler(async ({ data, context }) => {
+    await (await import("@/lib/open-endpoints.server")).assertOpenBudget("codepreview");
     const { joinWithCode } = await import("@/lib/programme.server");
     return joinWithCode(context.supabase, context.userId, data.code);
   });

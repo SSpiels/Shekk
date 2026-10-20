@@ -310,9 +310,15 @@ export type CodePreview = {
   isDemo: boolean;
 };
 
-/** Safe, pre-join peek: only enough to confirm you typed the right code. */
-export async function previewCode(db: Db, code: string): Promise<CodePreview | null> {
-  const { data, error } = await db.rpc("programme_code_preview" as never, { _code: code } as never);
+/**
+ * Safe, pre-join peek: only enough to confirm you typed the right code. The
+ * database function is server-only (members cannot call it directly, which would
+ * let them guess codes without limit), so the call is made here with the service
+ * client, after the caller has been throttled.
+ */
+export async function previewCode(code: string): Promise<CodePreview | null> {
+  const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+  const { data, error } = await (supabaseAdmin as unknown as Db).rpc("programme_code_preview" as never, { _code: code } as never);
   if (error) throw error;
   const row = (Array.isArray(data) ? data[0] : data) as Row | undefined;
   if (!row) return null;

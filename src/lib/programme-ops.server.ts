@@ -726,7 +726,6 @@ export async function markNotificationsRead(db: Db, userId: string, ids: string[
 /* ─────────────────────────────── Join / invites ──────────────────────────── */
 
 export type JoinPreview = {
-  cohortId: string;
   programmeName: string;
   cohortName: string;
   organisation: string | null;
@@ -756,8 +755,9 @@ export async function previewJoinCode(code: string): Promise<JoinPreview | null>
     .maybeSingle();
   if (!prog || String((prog as Row)["status"]) !== "active") return null;
   const p = prog as Row;
+  // The cohort's internal id is deliberately NOT returned: a stranger who only
+  // has a code needs to confirm it is the right programme, nothing more.
   return {
-    cohortId: String(cohort["id"]),
     programmeName: String(p["name"]),
     cohortName: String(cohort["name"]),
     organisation: s(p, "organisation"),
