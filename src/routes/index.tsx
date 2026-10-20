@@ -16,7 +16,8 @@ import { useApp } from "@/lib/store";
 import { useMyHandle } from "@/lib/useSocial";
 import { Avatar } from "@/components/Avatar";
 import { SITE_URL } from "@/lib/site";
-import { useProfile } from "@/lib/useProfile";
+import { useMemberName } from "@/lib/useMemberName";
+import { NamePrompt } from "@/components/NamePrompt";
 import { useOnboardedGate } from "@/lib/useOnboardedGate";
 import { useSetup } from "@/lib/useSetup";
 
@@ -388,10 +389,10 @@ function WhatsOn() {
 
 function HomeScreen() {
   const ready = useOnboardedGate();
-  const { state } = useApp();
-  const kycProfile = useProfile();
+  const { signedIn } = useApp();
   const { me: myHandle } = useMyHandle();
   const { travel } = useTravel();
+  const member = useMemberName();
   const promos = usePromotions("home");
   const recents = useRecentServices();
 
@@ -403,12 +404,8 @@ function HomeScreen() {
     );
   }
 
-  const handleFirstName =
-    myHandle?.displayName && myHandle.displayName !== "Shekk member"
-      ? myHandle.displayName.trim().split(" ")[0]
-      : "";
-  const firstName =
-    (handleFirstName || state.name?.trim().split(" ")[0] || kycProfile.profile?.legalFirstName?.trim().split(" ")[0] || "").trim();
+  // The name comes from the signed-in ACCOUNT, never from a copy kept on this device.
+  const firstName = member.first;
   const journey = getJourney(travel);
 
   return (
@@ -441,6 +438,9 @@ function HomeScreen() {
           ) : null}
         </div>
         <p className="mt-1 text-[13px] leading-snug text-muted-foreground">{journey.line}</p>
+        {signedIn && member.settled && !member.has ? (
+          <NamePrompt onSave={member.setName} saving={member.saving} error={member.error} />
+        ) : null}
       </div>
 
       <LocationBar />

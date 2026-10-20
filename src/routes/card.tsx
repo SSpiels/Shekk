@@ -20,6 +20,7 @@ import { PreviewBadge } from "@/components/Kit";
 import { LoadingBlocks } from "@/components/Kit";
 import { ShekkCardFace } from "@/components/ShekkCard";
 import { useApp } from "@/lib/store";
+import { useMemberName } from "@/lib/useMemberName";
 import { useOnboardedGate } from "@/lib/useOnboardedGate";
 import { ils } from "@/lib/mock";
 import { issueCard, provisionToWallet, PARTNERS } from "@/lib/banking";
@@ -54,6 +55,7 @@ const FEATURES = [
 function CardScreen() {
   const ready = useOnboardedGate();
   const { state, setCard, isPremium } = useApp();
+  const member = useMemberName();
   const [reveal, setReveal] = useState(false);
   const [issuing, setIssuing] = useState(false);
   const [walletBusy, setWalletBusy] = useState(false);
@@ -67,7 +69,7 @@ function CardScreen() {
     );
   }
 
-  const firstName = (state.name || "Shekk member").split(" ")[0];
+  const firstName = member.first || "Shekk member";
   const card = state.card;
 
   async function issue() {

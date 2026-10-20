@@ -6,6 +6,7 @@ import { SectionHead, LoadingBlocks, PreviewBadge } from "@/components/Kit";
 import { ils } from "@/lib/mock";
 import { refIn } from "@/lib/currencies";
 import { useApp } from "@/lib/store";
+import { useMemberName } from "@/lib/useMemberName";
 import { useOnboardedGate } from "@/lib/useOnboardedGate";
 import { useProfile } from "@/lib/useProfile";
 import { useProgramme, useTravel } from "@/lib/useProgramme";
@@ -43,6 +44,7 @@ function Me() {
   const kyc = useProfile();
   const { programme } = useProgramme();
   const { travel } = useTravel();
+  const member = useMemberName();
   const journey = getJourney(travel);
   const unread = useUnreadChats();
 
@@ -106,7 +108,7 @@ function Me() {
               </span>
             ) : (
               <span className="flex size-16 items-center justify-center rounded-2xl bg-accent text-2xl font-bold text-accent-foreground">
-                {(travel.displayName || state.name || "S").slice(0, 1).toUpperCase()}
+                {(member.full || "S").slice(0, 1).toUpperCase()}
               </span>
             )}
             <span className="absolute -bottom-1 -right-1 flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-card">
@@ -115,7 +117,7 @@ function Me() {
           </button>
           <div className="min-w-0">
             <h1 className="truncate font-display text-2xl font-bold tracking-tight">
-              {travel.displayName || state.name || "Your Shekk"}
+              {member.full || "Your Shekk"}
             </h1>
             <p className="line-clamp-2 text-[13px] leading-snug opacity-75">{contextLine}</p>
             <button type="button" onClick={() => setPickerOpen(true)} className="mt-1 text-xs underline opacity-70">

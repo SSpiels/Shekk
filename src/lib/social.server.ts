@@ -152,7 +152,20 @@ export async function ensureHandle(userId: string): Promise<MemberCard> {
   const first = (profile?.legal_first_name ?? "").trim();
   const last = (profile?.legal_last_name ?? "").trim();
   const displayName = [first, last].filter(Boolean).join(" ") || "Shekk member";
-  const seed = seedHandle(first || profile?.email || "member");
+
+  // Accounts that never filled in a profile have no name or profile email, which
+  // used to give everyone a tag like "member393". The account's own sign-in email
+  // is a far better starting point (a member can change it any time).
+  let email = (profile?.email ?? "").trim();
+  if (!first && !email) {
+    try {
+      const { data } = await db.auth.admin.getUserById(userId);
+      email = (data.user?.email ?? "").trim();
+    } catch {
+      /* fall back to a generic seed */
+    }
+  }
+  const seed = seedHandle(first || email || "member");
 
   for (let attempt = 0; attempt < 8; attempt++) {
     const handle = attempt === 0 ? seed : `${seed}${Math.floor(100 + Math.random() * 900)}`;

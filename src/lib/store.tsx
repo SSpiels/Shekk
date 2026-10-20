@@ -3,7 +3,9 @@ import type { Txn } from "./mock";
 import type { CurrencyCode } from "./currencies";
 import { defaultCardControls, type CardControls } from "./banking";
 import type { TierId } from "./membership";
+import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { isDifferentAccount } from "./member-name";
 import {
   getLedger,
   spendMoney,
@@ -137,6 +139,26 @@ type State = {
 
 const STORAGE_KEY = "shekk.state.v4";
 
+/** Which account last used this device, so a different one never inherits its data. */
+const LAST_USER_KEY = "shekk.lastUser.v1";
+
+function readLastUser(): string | null {
+  try {
+    return localStorage.getItem(LAST_USER_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeLastUser(id: string | null) {
+  try {
+    if (id) localStorage.setItem(LAST_USER_KEY, id);
+    else localStorage.removeItem(LAST_USER_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 /** Older builds shipped seeded demo profiles; drop them once on upgrade. */
 const LEGACY_KEYS = [
   "shekk.state.v1",
@@ -258,6 +280,7 @@ type Ctx = {
 const AppContext = createContext<Ctx | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [state, setState] = useState<State>(initialState);
   const [hydrated, setHydrated] = useState(false);
 
@@ -292,6 +315,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setLedgerReady(true);
   }, []);
 
+  /**
+   * Forget everything that belongs to the previous account: every cached server
+   * answer (handle, profile, programme…) and the personal state kept on this
+   * device (name, balance, friends…). Device preferences — theme, language — stay.
+   */
+  const dropAccountData = useCallback(() => {
+    queryClient.clear();
+    setState((s) => ({ ...initialState, settings: s.settings }));
+    setHeld(0);
+    setOpenHolds([]);
+    setLedgerReady(false);
+  }, [queryClient]);
+
   const refreshLedger = useCallback(async () => {
     if (!signedInRef.current) return;
     try {
@@ -324,6 +360,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const sync = (userId: string | null) => {
       if (!active) return;
       const isIn = Boolean(userId);
+      const wasIn = signedInRef.current;
+      // A different account on the same device must never see the last one's data,
+      // and signing out must not leave it behind for whoever signs in next.
+      if (isDifferentAccount(readLastUser(), userId) || (wasIn && !isIn)) dropAccountData();
+      // Remember who is signed in. A page that merely loads signed-out keeps the
+      // previous marker, so the NEXT person to sign in here is still recognised as new.
+      if (userId) writeLastUser(userId);
+      else if (wasIn) writeLastUser(null);
       signedInRef.current = isIn;
       setSignedIn(isIn);
       setAuthChecked(true);
@@ -375,7 +419,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       active = false;
       sub.subscription.unsubscribe();
     };
-  }, [refreshLedger]);
+  }, [refreshLedger, dropAccountData]);
 
 
   useEffect(() => {

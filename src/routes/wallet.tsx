@@ -6,6 +6,7 @@ import { PageHeader, SectionHead, EmptyState, LoadingBlocks, StatusPill, Preview
 import { useProfile } from "@/lib/useProfile";
 import { ShekkCardFace } from "@/components/ShekkCard";
 import { useApp } from "@/lib/store";
+import { useMemberName } from "@/lib/useMemberName";
 import { useOnboardedGate } from "@/lib/useOnboardedGate";
 import { ils } from "@/lib/mock";
 import { refIn } from "@/lib/currencies";
@@ -38,6 +39,7 @@ const ACTIONS = [
 function WalletScreen() {
   const ready = useOnboardedGate();
   const { state, isPremium, held, available } = useApp();
+  const member = useMemberName();
   const kyc = useProfile();
   const [hidden, setHidden] = useState(state.settings.hideBalance);
 
@@ -54,7 +56,7 @@ function WalletScreen() {
     );
   }
 
-  const firstName = state.name.split(" ")[0] || "Shekk member";
+  const firstName = member.first || "Shekk member";
 
   return (
     <AppShell>

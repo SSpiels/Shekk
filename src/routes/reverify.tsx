@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Check, Mail, Upload, ShieldCheck } from "lucide-react";
 import { FocusScreen, PrimaryButton, Card } from "@/components/AppShell";
 import { useApp } from "@/lib/store";
+import { useMemberName } from "@/lib/useMemberName";
 
 export const Route = createFileRoute("/reverify")({
   head: () => ({
@@ -21,6 +22,7 @@ export const Route = createFileRoute("/reverify")({
 
 function Reverify() {
   const { state, daysLeft, completeReverify, triggerReverify } = useApp();
+  const member = useMemberName();
   const [step, setStep] = useState<"email" | "upload" | "done">("email");
   const [uploaded, setUploaded] = useState(false);
   const navigate = useNavigate();
@@ -60,7 +62,7 @@ function Reverify() {
                 </div>
               </div>
               <div className="space-y-3 p-5 text-sm leading-relaxed">
-                <p className="font-semibold">Hey {state.name?.split(" ")[0] || "there"} —</p>
+                <p className="font-semibold">Hey {member.first || "there"} —</p>
                 <p>
                   It's been a year since we verified your ID. To keep your Shekk account active, we need one fresh
                   photo of your passport page and a quick selfie.
