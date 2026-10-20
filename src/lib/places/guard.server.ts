@@ -44,6 +44,8 @@ export const PLACES_MESSAGES = {
   global: "Places has reached its limit for today and resets tomorrow.",
   user: "You've reached today's limit for places lookups. It resets tomorrow.",
   paused: "Places is paused right now. Please try again later.",
+  /** Google itself refused or failed. The real reason is in the server log, never shown to members. */
+  unavailable: "Maps and places search aren't available right now. Please try again later.",
 } as const;
 
 type RpcClient = {

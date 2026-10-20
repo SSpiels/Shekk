@@ -56,28 +56,28 @@ async function call<T>(
       error?: { status?: string; details?: Array<{ reason?: string }> };
     };
     const reason = body.error?.details?.find((d) => d.reason)?.reason;
+    // The operator needs the real cause; a member needs a plain sentence. The
+    // detail goes to the server log only — it never reaches the browser.
+    let cause: string;
     if (reason === "API_KEY_HTTP_REFERRER_BLOCKED")
-      throw new Error(
-        'Google Maps server key is referrer-restricted. Set the server key\'s application restrictions to "None" or "IP addresses".',
-      );
-    if (reason === "API_KEY_SERVICE_BLOCKED")
-      throw new Error("Google Maps server key does not allow this API. Add Places and Routes to the key's allowed APIs.");
-    // Places API (New) and Routes API return a bare PERMISSION_DENIED with no
-    // `details` array for this exact case — confirmed live: same key, same
-    // project, working fine against the legacy Geocoding API (which spells
-    // out "check the API restrictions settings of your API key"). A key made
-    // before "Places API (New)" existed as a separate item in the API
-    // Library almost always has this API restriction gap.
-    if (body.error?.status === "PERMISSION_DENIED")
-      throw new Error(
-        'Google Maps server key doesn\'t allow this API. In Google Cloud Console → Credentials, add "Places API (New)" and "Routes API" to this key\'s API restrictions — a key made before those existed as separate items often only has the older Places API checked.',
-      );
-    throw new Error("Google Maps denied the request (403). Check the server key restrictions.");
+      cause = 'the server key is website-restricted — set its application restrictions to "None".';
+    else if (reason === "API_KEY_SERVICE_BLOCKED")
+      cause = "the server key is not allowed to use this API — allow Places API (New) and Routes API on it.";
+    else if (body.error?.status === "PERMISSION_DENIED")
+      // A bare PERMISSION_DENIED (no `details`) is what Places (New) and Routes
+      // return for several different project-level problems. Confirmed live on
+      // 2026-10-20: key and API restrictions were correct, both APIs enabled, and
+      // the real cause was a CLOSED billing account (the Maps JS API named it,
+      // BillingNotEnabledMapError). Check billing first, then the key's APIs.
+      cause =
+        "bare PERMISSION_DENIED — check, in order: the project is linked to an OPEN billing account; Places API (New) and Routes API are enabled; the server key allows both.";
+    else cause = "the request was refused (403).";
+    console.error(`[places] Google refused the request: ${cause}`);
+    throw new Error(PLACES_MESSAGES.unavailable);
   }
   if (!res.ok) {
-    const body = await res.text();
-    console.error(`Google Maps request failed [${res.status}]: ${body}`);
-    throw new Error(`Google Maps request failed [${res.status}]: ${body}`);
+    console.error(`[places] Google request failed [${res.status}]: ${await res.text()}`);
+    throw new Error(PLACES_MESSAGES.unavailable);
   }
   return (await res.json()) as T;
 }

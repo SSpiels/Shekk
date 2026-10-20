@@ -493,22 +493,50 @@ describe("Google row mapping", () => {
     expect(transferCount(segments)).toBe(1);
   });
 
-  it("gives an actionable message for a key whose API restrictions are missing Places/Routes", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async () => ({
-        ok: false,
-        status: 403,
-        json: async () => ({
-          error: { code: 403, message: "The caller does not have permission", status: "PERMISSION_DENIED" },
-        }),
-        text: async () => "",
-      })),
-    );
-    const { nearbyRows } = await import("./google.server");
-    await expect(
-      nearbyRows({ lat: 31.7, lon: 35.2, radiusM: 1000, placeTypes: ["gym"] }),
-    ).rejects.toThrow(/API restrictions/i);
+  describe("when Google refuses a request", () => {
+    const refuse = (status: number, json: unknown, text = "") =>
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => ({ ok: false, status, json: async () => json, text: async () => text })),
+      );
+    const run = async () => {
+      const { nearbyRows } = await import("./google.server");
+      return nearbyRows({ lat: 31.7, lon: 35.2, radiusM: 1000, placeTypes: ["gym"] });
+    };
+    // Spies accumulate calls across tests unless they are reset.
+    afterEach(() => vi.restoreAllMocks());
+
+    it("tells the member something plain and never leaks Google's reason or the key setup", async () => {
+      refuse(403, { error: { code: 403, message: "The caller does not have permission", status: "PERMISSION_DENIED" } });
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const err = await run().catch((e: Error) => e);
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toMatch(/aren't available right now/i);
+      expect((err as Error).message).not.toMatch(/key|billing|restriction|Google|API/i);
+    });
+
+    it("logs the real cause for the operator, billing first for a bare PERMISSION_DENIED", async () => {
+      refuse(403, { error: { code: 403, message: "The caller does not have permission", status: "PERMISSION_DENIED" } });
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      await run().catch(() => {});
+      expect(String(log.mock.calls[0]![0])).toMatch(/OPEN billing account/);
+    });
+
+    it("names a key restriction as the cause in the log, not to the member", async () => {
+      refuse(403, { error: { status: "PERMISSION_DENIED", details: [{ reason: "API_KEY_SERVICE_BLOCKED" }] } });
+      const log = vi.spyOn(console, "error").mockImplementation(() => {});
+      const err = await run().catch((e: Error) => e);
+      expect(String(log.mock.calls[0]![0])).toMatch(/not allowed to use this API/);
+      expect((err as Error).message).not.toMatch(/key/i);
+    });
+
+    it("keeps Google's response body out of the error on any other failure", async () => {
+      refuse(500, {}, "internal detail with a project number 1075331518403");
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      const err = await run().catch((e: Error) => e);
+      expect((err as Error).message).toMatch(/aren't available right now/i);
+      expect((err as Error).message).not.toMatch(/1075331518403|internal detail/);
+    });
   });
 
   it("refuses to call Google when the connection is missing", async () => {
