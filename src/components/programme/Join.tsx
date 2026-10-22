@@ -48,7 +48,8 @@ export function JoinPanel({ initialCode = "" }: { initialCode?: string }) {
     try {
       if (result?.kind === "invite") {
         await accept.mutateAsync(clean);
-        navigate({ to: "/programme/staff" });
+        // An invite makes them staff: take them to their new workspace, not the student programme tab.
+        navigate({ to: "/staff" });
       } else {
         await join.mutateAsync(clean);
         track("programme_joined");

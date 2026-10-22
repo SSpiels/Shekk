@@ -11,6 +11,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { STAFF_NAV, STAFF_SETTINGS_NAV, activeStaffNavId, type StaffNavId } from "@/lib/staff-nav";
+import { WorkspaceMenu } from "@/components/workspace/WorkspaceMenu";
+import { useWorkspace } from "@/lib/useWorkspace";
 import { useStaffOS } from "./StaffSessionContext";
 
 /* Icons live here, not in the pure lib/staff-nav.ts — same split as
@@ -53,38 +55,9 @@ function NavLink({
   );
 }
 
-/** Programme + cohort context. Not yet a switcher — see the note on StaffCohortSummary
- *  in lib/programme/logic.ts. Designed to become one without a layout change: a real
- *  switcher trigger replaces this card's content, not its position or shape. */
-function WorkspaceContext() {
-  const { activeWorkspace, session } = useStaffOS();
-  if (!activeWorkspace) return null;
-
-  return (
-    <div className="grad-balance relative overflow-hidden rounded-2xl px-4 py-3.5 text-ink-foreground shadow-card">
-      <span className="card-sheen pointer-events-none absolute inset-0" aria-hidden />
-      <div className="relative min-w-0">
-        <p className="truncate text-[13.5px] font-bold leading-tight">
-          {activeWorkspace.programmeName}
-        </p>
-        <p className="mt-0.5 truncate text-[11.5px] opacity-75">
-          {activeWorkspace.cohort
-            ? `${activeWorkspace.cohort.name}${activeWorkspace.cohort.year ? ` · ${activeWorkspace.cohort.year}` : ""}`
-            : "No cohort yet"}
-        </p>
-        {session.workspaces.length > 1 ? (
-          <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-wide opacity-60">
-            +{session.workspaces.length - 1} more workspace
-            {session.workspaces.length > 2 ? "s" : ""}
-          </p>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
 function StaffProfile() {
   const { activeWorkspace } = useStaffOS();
+  const { openPersonal, switching } = useWorkspace();
   return (
     <div className="flex items-center gap-2.5 rounded-xl px-2 py-2">
       <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary-soft text-sm font-bold text-primary">
@@ -94,9 +67,14 @@ function StaffProfile() {
         <p className="truncate text-[12.5px] font-semibold capitalize">
           {activeWorkspace?.role ?? "Staff"}
         </p>
-        <Link to="/" className="truncate text-[11px] text-muted-foreground hover:underline">
-          Back to Shekk
-        </Link>
+        <button
+          type="button"
+          onClick={() => void openPersonal()}
+          disabled={switching}
+          className="truncate text-left text-[11px] text-muted-foreground hover:underline disabled:opacity-60"
+        >
+          Switch to personal Shekk
+        </button>
       </div>
     </div>
   );
@@ -124,7 +102,7 @@ export function StaffSidebar() {
         </div>
       </div>
 
-      <WorkspaceContext />
+      <WorkspaceMenu variant="card" />
 
       <nav className="flex flex-1 flex-col gap-0.5">
         {STAFF_NAV.map((item) => (

@@ -13,12 +13,15 @@
  * StaffOSProvider, then wraps every child route in ProgrammeOSShell — no
  * page under /staff queries its own programme/cohort context.
  */
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { ShieldOff } from "lucide-react";
 import { Splash } from "@/components/Splash";
 import { ProgrammeOSShell } from "@/components/staff/ProgrammeOSShell";
 import { StaffOSProvider } from "@/components/staff/StaffSessionContext";
 import { useStaffSession } from "@/lib/useProgrammeHub";
+import { markLanded, readHint, setNotice } from "@/lib/landing-session";
+import { useWorkspace } from "@/lib/useWorkspace";
 
 export const Route = createFileRoute("/staff")({
   head: () => ({
@@ -65,6 +68,31 @@ function NotStaffScreen() {
 
 function StaffGate() {
   const { session, isStaff, loading } = useStaffSession();
+  const { prefs, remember } = useWorkspace();
+  const navigate = useNavigate();
+
+  // Being in the portal is where this session opened: never bounce them on a later tap of Home.
+  useEffect(() => markLanded(), []);
+
+  // Remember the workspace in use, so the app opens here next time. The server checks
+  // the member really has access before saving; a failure here changes nothing.
+  useEffect(() => {
+    if (!isStaff || !session.activeProgrammeId) return;
+    if (prefs.lastExperience === "staff" && prefs.lastProgrammeId === session.activeProgrammeId) return;
+    remember({ experience: "staff", programmeId: session.activeProgrammeId });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStaff, session.activeProgrammeId, prefs.lastExperience, prefs.lastProgrammeId]);
+
+  // They were using a workspace and their access has since been removed: fall back to the
+  // personal app, say so once, and (server-side) clear the stale preference.
+  useEffect(() => {
+    if (loading || isStaff) return;
+    if (readHint() === "staff" || prefs.lastExperience === "staff") {
+      setNotice("Your access to that workspace has changed, so you're back in your personal Shekk.");
+      void navigate({ to: "/", replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, isStaff]);
 
   if (loading) return <Splash message="Checking your programme access…" />;
   if (!isStaff) return <NotStaffScreen />;

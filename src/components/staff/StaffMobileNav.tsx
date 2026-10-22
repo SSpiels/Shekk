@@ -6,6 +6,7 @@
  */
 import { Link, useRouterState } from "@tanstack/react-router";
 import { STAFF_NAV, STAFF_SETTINGS_NAV, activeStaffNavId } from "@/lib/staff-nav";
+import { WorkspaceMenu } from "@/components/workspace/WorkspaceMenu";
 
 export function StaffMobileNav() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
@@ -13,7 +14,8 @@ export function StaffMobileNav() {
   const items = [...STAFF_NAV, STAFF_SETTINGS_NAV];
 
   return (
-    <nav className="scrollbar-none flex gap-1.5 overflow-x-auto border-b border-border bg-card px-3 py-2 lg:hidden">
+    <nav className="scrollbar-none flex items-center gap-1.5 overflow-x-auto border-b border-border bg-card px-3 py-2 lg:hidden">
+      <WorkspaceMenu variant="pill" />
       {items.map((item) => (
         <Link
           key={item.id}

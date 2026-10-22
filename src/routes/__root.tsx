@@ -11,6 +11,8 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { AppProvider } from "@/lib/store";
+// Side-effect import: records at app start whether the session opened on the home screen.
+import "@/lib/landing-session";
 import { RequireAccount } from "@/components/RequireAccount";
 import { ChatNotifications } from "@/components/ChatNotifications";
 import { Toaster } from "@/components/ui/sonner";

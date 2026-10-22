@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { CalendarDays, Compass, PlaneTakeoff, ShieldCheck, Smartphone, Check, PartyPopper } from "lucide-react";
 import { useProgramme, useTravel } from "@/lib/useProgramme";
@@ -5,7 +6,7 @@ import { useProgrammeHub } from "@/lib/useProgrammeHub";
 import { fmtIsraelDay, fmtIsraelTime } from "@/lib/programme/logic";
 
 
-import { AppShell } from "@/components/AppShell";
+import { AppShell, Notice } from "@/components/AppShell";
 import { SectionHead, EmptyState, LoadingBlocks, StatusPill, MicroLabel, ProgressBar } from "@/components/Kit";
 
 import { ActiveNow } from "@/components/ActiveNow";
@@ -17,6 +18,8 @@ import { useMyHandle } from "@/lib/useSocial";
 import { Avatar } from "@/components/Avatar";
 import { SITE_URL } from "@/lib/site";
 import { useMemberName } from "@/lib/useMemberName";
+import { useWorkspaceLanding } from "@/lib/useWorkspaceLanding";
+import { takeNotice } from "@/lib/landing-session";
 import { NamePrompt } from "@/components/NamePrompt";
 import { useOnboardedGate } from "@/lib/useOnboardedGate";
 import { useSetup } from "@/lib/useSetup";
@@ -393,10 +396,14 @@ function HomeScreen() {
   const { me: myHandle } = useMyHandle();
   const { travel } = useTravel();
   const member = useMemberName();
+  // Open in the experience they last used (once per session); shows the loading state while it decides.
+  const landing = useWorkspaceLanding();
+  // A one-time message, e.g. their programme workspace access was removed.
+  const [notice] = useState<string | null>(() => takeNotice());
   const promos = usePromotions("home");
   const recents = useRecentServices();
 
-  if (!ready) {
+  if (!ready || landing.pending) {
     return (
       <AppShell>
         <LoadingBlocks rows={2} />
@@ -442,6 +449,12 @@ function HomeScreen() {
           <NamePrompt onSave={member.setName} saving={member.saving} error={member.error} />
         ) : null}
       </div>
+
+      {notice ? (
+        <div className="px-5 pb-1">
+          <Notice>{notice}</Notice>
+        </div>
+      ) : null}
 
       <LocationBar />
 

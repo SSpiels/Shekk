@@ -2,6 +2,7 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { BadgeCheck, AlertTriangle, ChevronRight, Bookmark, Receipt, Settings, FileText, Camera, Crown, CreditCard, Sparkles, ShieldCheck, MessageCircle, LifeBuoy } from "lucide-react";
 import { AppShell, Card, ReverifyBanner } from "@/components/AppShell";
+import { WorkspaceCard } from "@/components/workspace/WorkspaceCard";
 import { SectionHead, LoadingBlocks, PreviewBadge } from "@/components/Kit";
 import { ils } from "@/lib/mock";
 import { refIn } from "@/lib/currencies";
@@ -152,6 +153,8 @@ function Me() {
       </header>
 
       <div className="space-y-5 px-4 py-5">
+        <WorkspaceCard />
+
         {MONEY_ENABLED ? <ReverifyBanner /> : null}
 
         <ShekkTagCard />

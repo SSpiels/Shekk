@@ -203,11 +203,19 @@ export function useJoinFlow() {
   const previewFn = useServerFn(programmeCodePreview);
   const joinFn = useServerFn(programmeJoin);
   const acceptFn = useServerFn(programmeAcceptInvite);
+  const qc = useQueryClient();
 
   return {
     preview: useMutation({ mutationFn: (code: string) => previewFn({ data: { code } }) }),
     join: useHubMutation((code: string) => joinFn({ data: { code } })),
-    accept: useHubMutation((code: string) => acceptFn({ data: { code } })),
+    // Accepting an invite makes the member staff: their cached "are you staff?" answer is now stale.
+    accept: useMutation({
+      mutationFn: (code: string) => acceptFn({ data: { code } }),
+      onSuccess: (next) => {
+        qc.setQueryData(HUB_KEY, next as ProgrammeHub);
+        void qc.invalidateQueries({ queryKey: ["staff"] });
+      },
+    }),
   };
 }
 

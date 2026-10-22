@@ -7,6 +7,9 @@ import { FocusScreen, PrimaryButton, Card } from "@/components/AppShell";
 import { Splash } from "@/components/Splash";
 import { useApp } from "@/lib/store";
 import { afterAuthPath, safeNext } from "@/lib/auth-redirect";
+import { useServerFn } from "@tanstack/react-start";
+import { saveStaffIntent } from "@/lib/programme-ops.functions";
+import { clearPendingStaffIntent, setPendingStaffIntent, takePendingStaffIntent } from "@/lib/staff-intent";
 
 export const Route = createFileRoute("/auth")({
   ssr: false,
@@ -201,6 +204,8 @@ function Auth() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [accepted, setAccepted] = useState(false);
+  const [staffIntent, setStaffIntent] = useState(false);
+  const saveIntent = useServerFn(saveStaffIntent);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -215,7 +220,16 @@ function Auth() {
    */
   useEffect(() => {
     if (!authChecked || !signedIn) return;
+    // They ticked "I work for a programme": remember the hint on their account and send
+    // them to enter their invite code. This grants nothing — only an invitation does.
+    if (takePendingStaffIntent()) {
+      void saveIntent({ data: { intent: true } })
+        .catch(() => undefined)
+        .finally(() => void navigate({ to: "/staff-login", search: { next: "/", code: undefined }, replace: true }));
+      return;
+    }
     void navigate({ to: afterAuthPath(next), replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authChecked, signedIn, navigate, next]);
 
 
@@ -277,6 +291,7 @@ function Auth() {
         setBusy(false);
         return setError("Please accept the Terms & Conditions to continue.");
       }
+      if (staffIntent) setPendingStaffIntent();
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -290,11 +305,13 @@ function Auth() {
         },
       });
       setBusy(false);
-      if (error) return setError(error.message);
-      if (data.session) {
-        void navigate({ to: afterAuthPath(next), replace: true });
-        return;
+      if (error) {
+        clearPendingStaffIntent();
+        return setError(error.message);
       }
+      // With a session already, the sign-in effect above takes them onward (to the invite-code
+      // entry if they said they work for a programme, otherwise to setup).
+      if (data.session) return;
       setSentTo(email);
       return;
     }
@@ -513,6 +530,21 @@ function Auth() {
                   </Link>{" "}
                   and privacy notice, and confirm I&rsquo;m 16 or over and creating this account for
                   myself.
+                </span>
+              </label>
+              <label className="flex items-start gap-3 border-t border-border pt-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={staffIntent}
+                  onChange={(e) => setStaffIntent(e.target.checked)}
+                  className="mt-0.5 size-5 rounded border-border"
+                />
+                <span>
+                  I work for a programme
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    Staff access comes from an invitation from your programme. Ticking this doesn&rsquo;t give you
+                    access &mdash; it just takes you to where you enter your invite code.
+                  </span>
                 </span>
               </label>
             </Card>
