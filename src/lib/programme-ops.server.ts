@@ -75,6 +75,9 @@ import {
   type StaffTeamOverview,
   type StaffWorkspace,
 } from "./programme/logic";
+import { healStalePrefs, readWorkspacePrefs } from "./workspace.server";
+import { resolveActiveProgrammeId } from "./workspace";
+import { randomInt } from "node:crypto";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = SupabaseClient<any, any, any>;
@@ -153,7 +156,7 @@ async function writeAudience(
 export async function staffContext(db: Db, userId: string, cohortId: string | null): Promise<StaffContext | null> {
   const { data } = await db
     .from("programme_staff")
-    .select("programme_id, role, permissions")
+    .select("programme_id, role, permissions, created_at")
     .eq("user_id", userId);
   const rows = (data ?? []) as Row[];
   if (!rows.length) return null;
@@ -167,7 +170,13 @@ export async function staffContext(db: Db, userId: string, cohortId: string | nu
       .maybeSingle();
     programmeId = cohort ? String((cohort as Row)["programme_id"]) : null;
   }
-  const row = programmeId ? rows.find((r) => String(r["programme_id"]) === programmeId) : rows[0];
+  // With no cohort to anchor to, use the same rule as everywhere else (the workspace
+  // they last used, else the newest grant) — never "whichever row came back first".
+  const fallbackId = resolveActiveProgrammeId(
+    rows.map((r) => ({ programmeId: String(r["programme_id"]), createdAt: String(r["created_at"]) })),
+    null,
+  );
+  const row = rows.find((r) => String(r["programme_id"]) === (programmeId ?? fallbackId));
   if (!row) return null;
   return {
     programmeId: String(row["programme_id"]),
@@ -193,7 +202,11 @@ export async function resolveStaffSession(db: Db, userId: string): Promise<Staff
     .eq("user_id", userId);
   if (error) throw error;
   const rows = (staffRows ?? []) as Row[];
-  if (!rows.length) return emptyStaffSession;
+  const savedPrefs = await readWorkspacePrefs(db, userId);
+  if (!rows.length) {
+    // No staff access at all: if they last used a workspace, put them back on personal for good.
+    return { ...emptyStaffSession, prefs: await healStalePrefs(userId, savedPrefs, []) };
+  }
 
   const programmeIds = [...new Set(rows.map((r) => String(r["programme_id"])))];
   const [{ data: programmes }, { data: cohorts }] = await Promise.all([
@@ -243,9 +256,10 @@ export async function resolveStaffSession(db: Db, userId: string): Promise<Staff
     ];
   });
 
-  const activeProgrammeId = pickActiveProgrammeId(workspaces);
+  const activeProgrammeId = pickActiveProgrammeId(workspaces, savedPrefs.lastProgrammeId);
   const activeCohort = workspaces.find((w) => w.programmeId === activeProgrammeId)?.cohort ?? null;
-  return { workspaces, activeProgrammeId, activeCohort };
+  const prefs = await healStalePrefs(userId, savedPrefs, workspaces);
+  return { workspaces, activeProgrammeId, activeCohort, prefs };
 }
 
 /** Throws unless the caller really is staff on this cohort with this permission. */
@@ -282,8 +296,18 @@ export async function readHub(db: Db, userId: string): Promise<ProgrammeHub> {
 
   // Staff who are not enrolled as participants still need their cohort.
   if (!cohortId) {
-    const { data: staffRows } = await db.from("programme_staff").select("programme_id").eq("user_id", userId);
-    const programmeId = staffRows?.[0] ? String((staffRows[0] as Row)["programme_id"]) : null;
+    const { data: staffRows } = await db
+      .from("programme_staff")
+      .select("programme_id, created_at")
+      .eq("user_id", userId);
+    const prefs = await readWorkspacePrefs(db, userId);
+    const programmeId = resolveActiveProgrammeId(
+      ((staffRows ?? []) as Row[]).map((r) => ({
+        programmeId: String(r["programme_id"]),
+        createdAt: String(r["created_at"]),
+      })),
+      prefs.lastProgrammeId,
+    );
     if (!programmeId) return emptyHub;
     const { data: cohort } = await db
       .from("programme_cohorts")
@@ -831,35 +855,40 @@ export async function previewInvite(code: string): Promise<InvitePreview | null>
   };
 }
 
-/** A director claims their programme (or a staff invite is accepted). */
-export async function acceptInvite(userDb: Db, userId: string, code: string): Promise<ProgrammeHub> {
+/**
+ * A director claims their programme, or a staff invite is accepted.
+ *
+ * The whole decision is one atomic database call (programme_invite_accept): exactly
+ * one caller can win an invite, an invite issued to an email only works for that
+ * email, an existing role is never overwritten, and a refusal consumes nothing.
+ * `email` is the signed-in account's own email, taken from their verified session —
+ * never from the browser.
+ */
+export async function acceptInvite(
+  userDb: Db,
+  userId: string,
+  code: string,
+  email: string | null,
+): Promise<ProgrammeHub> {
   const db = await adminDb();
-  const { data } = await db.from("programme_invites").select("*").eq("code", code.trim()).maybeSingle();
-  if (!data) throw new Error("That invite was not recognised");
-  const invite = data as Row;
-  if (invite["accepted_at"]) throw new Error("That invite has already been used");
-  if (invite["expires_at"] && new Date(String(invite["expires_at"])) < new Date()) {
-    throw new Error("That invite has expired");
-  }
-
-  const { error } = await db.from("programme_staff").upsert(
-    {
-      programme_id: invite["programme_id"],
-      user_id: userId,
-      role: String(invite["role"]),
-      permissions: [],
-    } as never,
-    { onConflict: "programme_id,user_id" },
-  );
-  if (error) throw new Error(error.message || "We couldn't accept that invite");
-
-  await db
-    .from("programme_invites")
-    .update({ accepted_by: userId, accepted_at: new Date().toISOString() } as never)
-    .eq("id", invite["id"]);
-
+  const { data, error } = await db.rpc("programme_invite_accept" as never, {
+    _user_id: userId,
+    _code: code.trim(),
+    _email: email,
+  } as never);
+  if (error) throw new Error("We couldn't accept that invite right now.");
+  const outcome = String(((Array.isArray(data) ? data[0] : data) as Row | undefined)?.["outcome"] ?? "unknown");
+  if (outcome !== "accepted") throw new Error(INVITE_REFUSALS[outcome] ?? INVITE_REFUSALS["unknown"]!);
   return readHub(userDb, userId);
 }
+
+/** What a member is told when an invite can't be accepted. Plain, and never reveals more than that. */
+export const INVITE_REFUSALS: Record<string, string> = {
+  unknown: "That invite was not recognised",
+  used: "That invite has already been used",
+  expired: "That invite has expired",
+  wrong_account: "That invite was sent to a different email address. Sign in with the email it was sent to.",
+};
 
 /* ──────────────────────────── Notification fan-out ───────────────────────── */
 
@@ -2972,10 +3001,14 @@ export async function staffRevokeTeamInvite(
 
 /* ─────────────────────────── Internal Shekk admin ────────────────────────── */
 
+/**
+ * An invite or claim code is a bearer secret: whoever holds it can gain access.
+ * Drawn with the platform's cryptographic generator, never Math.random().
+ */
 function randomCode(prefix: string, length = 6) {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let out = "";
-  for (let i = 0; i < length; i += 1) out += alphabet[Math.floor(Math.random() * alphabet.length)];
+  for (let i = 0; i < length; i += 1) out += alphabet[randomInt(alphabet.length)];
   return `${prefix}${out}`;
 }
 

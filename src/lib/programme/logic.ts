@@ -8,6 +8,8 @@
  * never so it can replace it.
  */
 
+import { defaultWorkspacePrefs, resolveActiveProgrammeId, type WorkspacePrefs } from "../workspace";
+
 /* ─────────────────────────────── Vocabulary ─────────────────────────────── */
 
 export const STAFF_PERMISSIONS = [
@@ -84,28 +86,25 @@ export type StaffSession = {
   activeProgrammeId: string | null;
   /** The active workspace's cohort, already resolved — see StaffCohortSummary's note. */
   activeCohort: StaffCohortSummary | null;
+  /** How this member last used Shekk (personal or a workspace). Drives where the app opens. */
+  prefs: WorkspacePrefs;
 };
 
 export const emptyStaffSession: StaffSession = {
   workspaces: [],
   activeProgrammeId: null,
   activeCohort: null,
+  prefs: defaultWorkspacePrefs,
 };
 
 /**
- * Which workspace a staff member lands in when they haven't chosen one.
- *
- * DELIBERATE PLACEHOLDER, not permanent product behaviour. Multi-workspace
- * staff are a real, schema-supported case (programme_staff has no
- * uniqueness constraint on user_id) that V1 doesn't yet expose a switcher
- * for, so this picks the most recently granted staff row — deterministic,
- * but arbitrary from the user's point of view. When a switcher or a stored
- * "last active" preference exists, replace this function's body; don't just
- * delete it and let a single workspace be assumed again.
+ * Which workspace is active. The one the member last used, if they still have
+ * staff access to it; otherwise the one they were most recently added to. The
+ * single place this is decided — the staff session, the mobile hub and the
+ * staff context all go through it (see workspace.ts).
  */
-export function pickActiveProgrammeId(workspaces: StaffWorkspace[]): string | null {
-  if (!workspaces.length) return null;
-  return [...workspaces].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0].programmeId;
+export function pickActiveProgrammeId(workspaces: StaffWorkspace[], preferredId?: string | null): string | null {
+  return resolveActiveProgrammeId(workspaces, preferredId);
 }
 
 export type AudienceKind = "everyone" | "groups" | "individuals";

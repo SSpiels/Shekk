@@ -229,6 +229,35 @@ export const staffSession = createServerFn({ method: "POST" })
     return resolveStaffSession(context.supabase, context.userId);
   });
 
+/**
+ * Remember which experience the member is using. A switch to a workspace is
+ * refused unless they really are staff on that programme (checked server-side),
+ * so the saved preference can never be pointed at somewhere they can't go.
+ */
+export const saveWorkspace = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) =>
+    z
+      .discriminatedUnion("experience", [
+        z.object({ experience: z.literal("personal") }),
+        z.object({ experience: z.literal("staff"), programmeId: z.string().uuid() }),
+      ])
+      .parse(d),
+  )
+  .handler(async ({ data, context }) => {
+    const { saveWorkspaceSwitch } = await import("@/lib/workspace.server");
+    return saveWorkspaceSwitch(context.userId, data);
+  });
+
+/** "I work for a programme", chosen at sign-up. A hint that shows the invite-code entry; grants nothing. */
+export const saveStaffIntent = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d: unknown) => z.object({ intent: z.boolean() }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { saveStaffIntent: save } = await import("@/lib/workspace.server");
+    return save(context.userId, data.intent);
+  });
+
 /* ──────────────────────────── Participant mutations ───────────────────────── */
 
 export const programmeSetRsvp = createServerFn({ method: "POST" })
@@ -320,7 +349,9 @@ export const programmeAcceptInvite = createServerFn({ method: "POST" })
   .handler(async ({ data, context }) => {
     await (await import("@/lib/open-endpoints.server")).assertOpenBudget("codepreview");
     const { acceptInvite } = await import("@/lib/programme-ops.server");
-    return acceptInvite(context.supabase, context.userId, data.code);
+    // The email the invite is checked against comes from the verified session, never the browser.
+    const email = typeof context.claims?.email === "string" ? context.claims.email : null;
+    return acceptInvite(context.supabase, context.userId, data.code, email);
   });
 
 /* ───────────────────────────────── Staff: events ──────────────────────────── */
