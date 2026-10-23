@@ -5,6 +5,7 @@ import { AppShell, Card } from "@/components/AppShell";
 import { LoadingBlocks, PageHeader } from "@/components/Kit";
 import { useApp } from "@/lib/store";
 import { useProgrammeHub } from "@/lib/useProgrammeHub";
+import { useWorkspace } from "@/lib/useWorkspace";
 import { JoinPanel } from "@/components/programme/Join";
 import { fmtDay } from "@/components/programme/Bits";
 
@@ -38,7 +39,8 @@ const TABS = [
 
 function ProgrammeLayout() {
   const { signedIn, authChecked } = useApp();
-  const { hub, joined, isStaff, loading, unread } = useProgrammeHub();
+  const { hub, joined, loading, unread } = useProgrammeHub();
+  const { isStaff: isStaffAnywhere } = useWorkspace();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
 
   if (!authChecked) {
@@ -143,16 +145,14 @@ function ProgrammeLayout() {
             </Link>
           );
         })}
-        {isStaff ? (
+        {/* Staff access comes from the account's own staff workspaces — not from whichever
+            programme this student happens to be enrolled in. */}
+        {isStaffAnywhere ? (
           <Link
-            to="/programme/staff"
-            className={`tap-flat flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-[12.5px] font-bold ${
-              pathname.startsWith("/programme/staff")
-                ? "bg-primary text-primary-foreground"
-                : "border border-primary/40 bg-primary-soft text-primary"
-            }`}
+            to="/staff/overview"
+            className="tap-flat flex shrink-0 items-center gap-1.5 rounded-full border border-primary/40 bg-primary-soft px-3.5 py-2 text-[12.5px] font-bold text-primary"
           >
-            <Settings2 className="size-3.5" /> Staff
+            <Settings2 className="size-3.5" /> Programme OS
           </Link>
         ) : null}
       </nav>

@@ -132,7 +132,8 @@ export function StaffCalendarWeek({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-7">
+      {/* Seven columns only once there is room (a 1024px screen minus the sidebar is too tight). */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-7">
         {days.map((key) => {
           const { weekday, day } = fmtDayKey(key);
           const dayEvents = byDay.get(key) ?? [];

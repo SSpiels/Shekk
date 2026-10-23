@@ -108,15 +108,16 @@ export function StaffCalendarMonth({
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-1.5 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+      <div className="grid grid-cols-7 gap-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground md:gap-1.5">
         {WEEKDAYS.map((w) => (
           <div key={w} className="px-1 text-center">
-            {w}
+            <span className="md:hidden">{w.slice(0, 1)}</span>
+            <span className="hidden md:inline">{w}</span>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-1.5">
+      <div className="grid grid-cols-7 gap-1 md:gap-1.5">
         {grid.map((key) => {
           const inMonth = monthKey(key) === month;
           const dayEvents = byDay.get(key) ?? [];
@@ -128,7 +129,7 @@ export function StaffCalendarMonth({
               key={key}
               type="button"
               onClick={() => setSelected(key)}
-              className={`min-h-[84px] rounded-xl border p-1.5 text-left align-top ${
+              className={`min-h-[56px] rounded-xl border p-1 text-left align-top md:min-h-[84px] md:p-1.5 ${
                 isSelected
                   ? "border-primary bg-primary-soft"
                   : "border-border bg-card hover:bg-muted/40"
@@ -141,7 +142,22 @@ export function StaffCalendarMonth({
               >
                 {dayNum}
               </span>
-              <div className="mt-1 space-y-0.5">
+              {/* A phone cell is too narrow for titles: show how busy the day is, tap for the list. */}
+              <div className="mt-1 flex flex-wrap gap-0.5 md:hidden">
+                {dayEvents.slice(0, 4).map((e) => (
+                  <span
+                    key={e.id}
+                    className={`size-1.5 rounded-full ${
+                      e.status === "cancelled"
+                        ? "bg-muted-foreground"
+                        : statusTone(e.status) === "attention"
+                          ? "bg-warning"
+                          : "bg-primary"
+                    }`}
+                  />
+                ))}
+              </div>
+              <div className="mt-1 hidden space-y-0.5 md:block">
                 {dayEvents.slice(0, 3).map((e) => (
                   <p
                     key={e.id}

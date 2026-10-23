@@ -89,13 +89,15 @@ function CalendarScreen() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-xl border border-border bg-card p-1">
+        <div role="tablist" aria-label="Calendar view" className="inline-flex rounded-xl border border-border bg-card p-1">
           {VIEWS.map((v) => (
             <button
               key={v.id}
               type="button"
               onClick={() => setView(v.id)}
-              className={`rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
+              role="tab"
+              aria-selected={view === v.id}
+              className={`rounded-lg px-3.5 py-2 text-[12.5px] font-semibold transition-colors md:px-3 md:py-1.5 ${
                 view === v.id
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-muted"
@@ -122,7 +124,7 @@ function CalendarScreen() {
               setSelected(null);
               setEditorOpen(true);
             }}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[13px] font-semibold text-primary-foreground"
+            className="hidden items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[13px] font-semibold text-primary-foreground md:inline-flex"
           >
             <Plus className="size-4" /> New event
           </button>

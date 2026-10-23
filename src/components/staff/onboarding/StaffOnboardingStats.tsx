@@ -4,6 +4,7 @@
  * dedicated view is implemented, rather than a second page), and per-item
  * completion so staff can see which checklist item is the actual bottleneck.
  */
+import { useState } from "react";
 import { Card } from "@/components/AppShell";
 import { MicroLabel, ProgressBar } from "@/components/Kit";
 import type { OnboardingItemStat, OnboardingStatus } from "@/lib/programme/logic";
@@ -33,10 +34,15 @@ export function StaffOnboardingStats({
   onStatusClick: (status: OnboardingStatus) => void;
 }) {
   const sortedItems = [...itemStats].sort((a, b) => a.percent - b.percent);
+  // A phone shows the few biggest bottlenecks; the full list is a tap away.
+  const [showAll, setShowAll] = useState(false);
+  const COLLAPSED = 5;
+  const visibleItems = showAll ? sortedItems : sortedItems.slice(0, COLLAPSED);
+  const hidden = sortedItems.length - visibleItems.length;
 
   return (
-    <div className="grid gap-3 md:grid-cols-2">
-      <Card className="space-y-3">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 md:grid-cols-2">
+      <Card className="min-w-0 space-y-3">
         <div className="flex items-baseline justify-between">
           <MicroLabel className="text-muted-foreground">Cohort onboarding</MicroLabel>
           <span className="font-display text-2xl font-bold tracking-tight">{overallPercent}%</span>
@@ -62,13 +68,13 @@ export function StaffOnboardingStats({
         <p className="text-[11.5px] text-muted-foreground">{totalStudents} active students</p>
       </Card>
 
-      <Card className="space-y-2.5">
-        <MicroLabel className="text-muted-foreground">By checklist item</MicroLabel>
+      <Card className="min-w-0 space-y-2.5">
+        <MicroLabel className="text-muted-foreground">By checklist item · least done first</MicroLabel>
         {sortedItems.length === 0 ? (
           <p className="text-sm text-muted-foreground">This cohort hasn't set up a checklist.</p>
         ) : (
           <div className="space-y-2">
-            {sortedItems.map((item) => (
+            {visibleItems.map((item) => (
               <div key={item.itemId} className="flex items-center gap-2">
                 <span className="min-w-0 flex-1 truncate text-[13px] font-medium">
                   {item.title}
@@ -84,6 +90,15 @@ export function StaffOnboardingStats({
                 </span>
               </div>
             ))}
+            {sortedItems.length > COLLAPSED ? (
+              <button
+                type="button"
+                onClick={() => setShowAll((v) => !v)}
+                className="pt-1 text-[12.5px] font-semibold text-primary"
+              >
+                {showAll ? "Show fewer" : `Show all ${sortedItems.length} items (+${hidden})`}
+              </button>
+            ) : null}
           </div>
         )}
       </Card>

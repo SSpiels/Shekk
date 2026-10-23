@@ -23,9 +23,10 @@ export function StaffOnboardingFilterBar({
   status: StaffOnboardingStatusFilter;
   onStatus: (v: StaffOnboardingStatusFilter) => void;
 }) {
+  const select = "min-w-0 rounded-xl border border-border bg-background px-3 py-2.5 text-sm md:py-2";
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <label className="flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border border-border bg-background px-3 py-2 text-sm">
+    <div className="grid grid-cols-2 gap-2 md:flex md:flex-wrap md:items-center">
+      <label className="col-span-2 flex min-w-0 items-center gap-2 rounded-xl border border-border bg-background px-3 py-2.5 text-sm md:min-w-[220px] md:flex-1 md:py-2">
         <Search className="size-4 shrink-0 text-muted-foreground" />
         <input
           value={q}
@@ -46,11 +47,7 @@ export function StaffOnboardingFilterBar({
       </label>
 
       {groups.length > 0 ? (
-        <select
-          value={groupId}
-          onChange={(e) => onGroupId(e.target.value)}
-          className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
-        >
+        <select value={groupId} onChange={(e) => onGroupId(e.target.value)} className={select}>
           <option value="">All groups</option>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>
@@ -63,7 +60,7 @@ export function StaffOnboardingFilterBar({
       <select
         value={status}
         onChange={(e) => onStatus(e.target.value as StaffOnboardingStatusFilter)}
-        className="rounded-xl border border-border bg-background px-3 py-2 text-sm"
+        className={`${select} ${groups.length === 0 ? "col-span-2" : ""}`}
       >
         <option value="">Any status</option>
         <option value="not_started">Not started</option>

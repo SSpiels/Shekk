@@ -51,15 +51,15 @@ function TeamScreen() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <UserCog className="size-4.5 text-primary" />
-          <h2 className="text-[15px] font-bold">Team</h2>
+        <div className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
+          <UserCog className="size-4 text-primary" />
+          {data.members.length} {data.members.length === 1 ? "person" : "people"} with access
         </div>
         {data.canManage ? (
           <button
             type="button"
             onClick={() => setInviting(true)}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2 text-[13px] font-semibold text-primary-foreground"
+            className="tap inline-flex items-center gap-1.5 rounded-xl bg-primary px-3.5 py-2.5 text-[13px] font-semibold text-primary-foreground md:py-2"
           >
             <UserPlus className="size-4" /> Invite
           </button>

@@ -57,12 +57,7 @@ function StaffSettings() {
   const isArchived = data.status === "archived";
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2">
-        <SettingsIcon className="size-4.5 text-primary" />
-        <h2 className="text-[15px] font-bold">Settings</h2>
-      </div>
-
+    <div className="grid max-w-4xl grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2 lg:items-start">
       <div className="space-y-3 rounded-2xl border border-border bg-card p-4 shadow-card">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">

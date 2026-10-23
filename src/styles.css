@@ -176,9 +176,10 @@
   &:active {
     transform: scale(0.97);
   }
+  /* A gentle lift: 3% is fine on a button but makes a full-width card on a desktop swell. */
   @media (hover: hover) and (pointer: fine) {
     &:hover {
-      transform: scale(1.03);
+      transform: scale(1.012);
     }
   }
 }
@@ -1053,4 +1054,14 @@
 @media (prefers-reduced-motion: reduce) {
   .pp-wave, .pp-cloud, .pp-birds, .pp-palm, .pp-sun, .pp-fish { animation: none; }
   .pp-stamp-in { animation: none; }
+}
+
+/* Programme OS on a phone: iOS Safari zooms the page when a field under 16px is focused. Unlayered on
+   purpose so it beats the text-sm utilities on the form fields. */
+@media (max-width: 767px) {
+  .os-root input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  .os-root select,
+  .os-root textarea {
+    font-size: 16px;
+  }
 }

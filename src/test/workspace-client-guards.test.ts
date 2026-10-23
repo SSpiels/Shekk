@@ -20,14 +20,18 @@ describe("the switcher is where the member expects it", () => {
   });
 
   it("the staff sidebar and the small-screen nav both carry the switcher", () => {
-    expect(code("src/components/staff/StaffSidebar.tsx")).toContain('<WorkspaceMenu variant="card" />');
-    expect(code("src/components/staff/StaffMobileNav.tsx")).toContain('<WorkspaceMenu variant="pill" />');
+    const sidebar = code("src/components/staff/StaffSidebar.tsx");
+    expect(sidebar).toContain('<WorkspaceMenu variant="card" />');
+    expect(sidebar).toContain('<WorkspaceMenu variant="rail" />');
+    expect(code("src/components/staff/StaffMobileChrome.tsx")).toContain('<WorkspaceMenu variant="pill" />');
   });
 
   it("'Back to Shekk' is a real switch that remembers the choice, not just a link", () => {
-    const sidebar = code("src/components/staff/StaffSidebar.tsx");
-    expect(sidebar).toContain("openPersonal");
-    expect(sidebar).not.toMatch(/Back to Shekk/);
+    for (const f of ["src/components/staff/StaffSidebar.tsx", "src/components/staff/StaffMobileChrome.tsx"]) {
+      const source = code(f);
+      expect(source, f).toContain("openPersonal");
+      expect(source, f).not.toMatch(/Back to Shekk/);
+    }
   });
 
   it("only workspaces the server returned are ever offered", () => {

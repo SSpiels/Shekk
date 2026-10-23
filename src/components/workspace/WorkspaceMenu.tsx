@@ -16,7 +16,15 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useWorkspace } from "@/lib/useWorkspace";
 
-export function WorkspaceMenu({ variant }: { variant: "card" | "pill" }) {
+const initialsOf = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("");
+
+export function WorkspaceMenu({ variant }: { variant: "card" | "pill" | "rail" }) {
   const { workspaces, activeProgrammeId, openWorkspace, openPersonal, switching } = useWorkspace();
   const active = workspaces.find((w) => w.programmeId === activeProgrammeId) ?? null;
   if (!active) return null;
@@ -26,7 +34,21 @@ export function WorkspaceMenu({ variant }: { variant: "card" | "pill" }) {
     : "No cohort yet";
 
   const trigger =
-    variant === "card" ? (
+    variant === "rail" ? (
+      <button
+        type="button"
+        aria-label={`Switch workspace — ${active.programmeName}`}
+        title={active.programmeName}
+        className="grad-balance relative flex size-11 items-center justify-center overflow-hidden rounded-xl text-ink-foreground shadow-card outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        <span className="card-sheen pointer-events-none absolute inset-0" aria-hidden />
+        {switching ? (
+          <Loader2 className="relative size-4 animate-spin" />
+        ) : (
+          <span className="relative font-display text-sm font-bold">{initialsOf(active.programmeName)}</span>
+        )}
+      </button>
+    ) : variant === "card" ? (
       <button
         type="button"
         aria-label="Switch workspace"
@@ -59,7 +81,11 @@ export function WorkspaceMenu({ variant }: { variant: "card" | "pill" }) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-64">
+      <DropdownMenuContent
+        align="start"
+        side={variant === "rail" ? "right" : "bottom"}
+        className="w-[min(16rem,calc(100vw-1.5rem))]"
+      >
         <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground">
           Programme workspaces
         </DropdownMenuLabel>

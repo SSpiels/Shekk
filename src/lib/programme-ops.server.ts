@@ -57,6 +57,7 @@ import {
   type StaffContentOverview,
   type StaffContext,
   type StaffEventResponses,
+  type StaffGroupsOverview,
   type StaffOnboardingOverview,
   type StaffOnboardingStudent,
   type StaffOverviewAnnouncement,
@@ -64,6 +65,7 @@ import {
   type StaffOverviewEvent,
   type StaffOverviewTeam,
   type StaffPermission,
+  type StaffPollsOverview,
   type StaffRole,
   type StaffSession,
   type StaffStudentChecklistItem,
@@ -1920,6 +1922,113 @@ export async function staffCommunicationsOverview(
 }
 
 /**
+ * The cohort's polls and questions with live results, for Programme OS. Gated on the
+ * `votes` permission — the same one that gates opening and closing them — and scoped to
+ * the cohort the caller proved they can staff, so it is correct for someone who is also a
+ * student in a different programme.
+ */
+export async function staffPollsOverview(
+  db: Db,
+  userId: string,
+  cohortId: string,
+): Promise<StaffPollsOverview> {
+  await requireStaff(db, userId, cohortId, "votes");
+  const [voteRes, audiences] = await Promise.all([
+    db.from("programme_votes").select("*").eq("cohort_id", cohortId).order("created_at", { ascending: false }),
+    loadAudiences(db, cohortId),
+  ]);
+  const voteRows = (voteRes.data ?? []) as Row[];
+  if (voteRows.length === 0) return { cohortId, polls: [] };
+
+  const ids = voteRows.map((v) => String(v["id"]));
+  const [optionRes, responseRes] = await Promise.all([
+    db.from("programme_vote_options").select("*").in("vote_id", ids).order("sort_order"),
+    db.from("programme_vote_responses").select("vote_id, option_id").in("vote_id", ids),
+  ]);
+  const optionCounts = new Map<string, number>();
+  const responseTotals = new Map<string, number>();
+  for (const r of (responseRes.data ?? []) as Row[]) {
+    const oid = String(r["option_id"]);
+    const vid = String(r["vote_id"]);
+    optionCounts.set(oid, (optionCounts.get(oid) ?? 0) + 1);
+    responseTotals.set(vid, (responseTotals.get(vid) ?? 0) + 1);
+  }
+  const optionRows = (optionRes.data ?? []) as Row[];
+
+  const polls: ProgrammeVote[] = voteRows.map((v) => {
+    const id = String(v["id"]);
+    return {
+      id,
+      eventId: s(v, "event_id"),
+      question: String(v["question"]),
+      description: s(v, "description"),
+      voteKind: (s(v, "vote_kind") ?? "poll") as ProgrammeVote["voteKind"],
+      createdAt: String(v["created_at"]),
+      status: String(v["status"]) as "open" | "closed",
+      anonymous: Boolean(v["anonymous"]),
+      allowChange: Boolean(v["allow_change"]),
+      resultsVisible: Boolean(v["results_visible"]),
+      audience: audienceFor(audiences, "vote", id, s(v, "audience_kind")),
+      closesAt: s(v, "closes_at"),
+      closedAt: s(v, "closed_at"),
+      winningOptionId: s(v, "winning_option_id"),
+      options: optionRows
+        .filter((o) => String(o["vote_id"]) === id)
+        .map((o) => ({
+          id: String(o["id"]),
+          label: String(o["label"]),
+          detail: s(o, "detail"),
+          capacity: n(o, "capacity"),
+          count: optionCounts.get(String(o["id"])) ?? 0,
+        })),
+      myOptionId: null,
+      responseCount: responseTotals.get(id) ?? 0,
+    };
+  });
+  return { cohortId, polls };
+}
+
+/** The cohort's groups and who is in each, for Programme OS group management. Gated on `groups`. */
+export async function staffGroupsOverview(
+  db: Db,
+  userId: string,
+  cohortId: string,
+): Promise<StaffGroupsOverview> {
+  await requireStaff(db, userId, cohortId, "groups");
+  const { data: groupRows } = await db
+    .from("programme_groups")
+    .select("id, name, description")
+    .eq("cohort_id", cohortId)
+    .order("sort_order");
+  const groups = (groupRows ?? []) as Row[];
+  if (groups.length === 0) return { cohortId, groups: [] };
+
+  const { data: memberRows } = await db
+    .from("programme_group_members")
+    .select("group_id, user_id")
+    .in(
+      "group_id",
+      groups.map((g) => String(g["id"])),
+    );
+  const membersByGroup = new Map<string, string[]>();
+  for (const m of (memberRows ?? []) as Row[]) {
+    const gid = String(m["group_id"]);
+    const list = membersByGroup.get(gid) ?? [];
+    list.push(String(m["user_id"]));
+    membersByGroup.set(gid, list);
+  }
+  return {
+    cohortId,
+    groups: groups.map((g) => ({
+      id: String(g["id"]),
+      name: String(g["name"]),
+      description: s(g, "description"),
+      memberIds: membersByGroup.get(String(g["id"])) ?? [],
+    })),
+  };
+}
+
+/**
  * One announcement's acknowledgement drill-down: eligible/ack/outstanding
  * counts plus the outstanding students by name, for staff to act on. Gated
  * on the `acknowledgements` permission, separately from `announcements`
@@ -2157,7 +2266,7 @@ export async function staffOverview(
       staffOnboardingOverview(db, userId, cohortId),
       db
         .from("programme_events")
-        .select("id, title, starts_at, location_label")
+        .select("id, title, starts_at, location_label, status")
         .eq("cohort_id", cohortId)
         .gte("starts_at", new Date().toISOString())
         .order("starts_at")
@@ -2233,6 +2342,7 @@ export async function staffOverview(
       title: String(e["title"]),
       startsAt: String(e["starts_at"]),
       locationLabel: s(e, "location_label"),
+      status: (s(e, "status") ?? "scheduled") as EventStatus,
     })),
     recentAnnouncements: ((announcements ?? []) as Row[]).map((a) => ({
       id: String(a["id"]),

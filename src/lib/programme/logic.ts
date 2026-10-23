@@ -802,6 +802,7 @@ export type StaffOverviewEvent = {
   title: string;
   startsAt: string;
   locationLabel: string | null;
+  status: EventStatus;
 };
 
 export type StaffOverviewAnnouncement = {
@@ -862,6 +863,25 @@ export type StaffCommunicationsOverview = {
   cohortId: string;
   totalStudents: number;
   announcements: StaffAnnouncementSummary[];
+};
+
+/** Programme OS: every poll and question in the cohort, with live results (staff always see counts). */
+export type StaffPollsOverview = {
+  cohortId: string;
+  polls: ProgrammeVote[];
+};
+
+export type StaffGroupSummary = {
+  id: string;
+  name: string;
+  description: string | null;
+  memberIds: string[];
+};
+
+/** Programme OS: the cohort's groups and exactly who is in each. */
+export type StaffGroupsOverview = {
+  cohortId: string;
+  groups: StaffGroupSummary[];
 };
 
 export type StaffAnnouncementStudentRef = {

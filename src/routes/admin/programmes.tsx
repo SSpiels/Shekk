@@ -896,10 +896,10 @@ function ContentTab({
           change history remain intact.
         </p>
         <Link
-          to="/programme/staff"
+          to="/staff/overview"
           className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-muted px-3 py-2 text-xs font-bold"
         >
-          Open staff hub <ChevronRight className="size-3.5" />
+          Open Programme OS <ChevronRight className="size-3.5" />
         </Link>
       </div>
       {sections.map((s) => (
@@ -958,7 +958,7 @@ function TestbedPanel() {
         Creates or resets <span className="font-semibold text-foreground">Shekk Test Programme</span> →{" "}
         <span className="font-semibold text-foreground">Summer Test Cohort</span> and makes your own account both
         programme owner and participant, so you can test <span className="font-semibold text-foreground">/programme</span>{" "}
-        and <span className="font-semibold text-foreground">/programme/staff</span> from one login. Real partner
+        and <span className="font-semibold text-foreground">/staff</span> (Programme OS) from one login. Real partner
         programmes are never touched.
       </p>
 
@@ -987,7 +987,7 @@ function TestbedPanel() {
               Open student view
             </Link>
             <Link
-              to="/programme/staff"
+              to="/staff/overview"
               className="tap-flat rounded-xl border border-border bg-card px-3 py-2 text-xs font-bold"
             >
               Open staff view

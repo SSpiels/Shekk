@@ -136,19 +136,33 @@ function ContentScreen() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex gap-1.5 overflow-x-auto rounded-xl border border-border bg-card p-1">
+        <div
+          role="tablist"
+          aria-label="Content"
+          className="scrollbar-none flex max-w-full gap-1 overflow-x-auto rounded-xl border border-border bg-card p-1"
+        >
           {TABS.map((t) => (
             <button
               key={t.id}
               type="button"
+              role="tab"
+              aria-selected={tab === t.id}
               onClick={() => setTab(t.id)}
-              className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12.5px] font-semibold transition-colors ${
+              className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-[12.5px] font-semibold transition-colors md:py-1.5 ${
                 tab === t.id
                   ? "bg-primary text-primary-foreground"
                   : "text-muted-foreground hover:bg-muted"
               }`}
             >
-              <t.icon className="size-3.5" /> {t.label}
+              <t.icon className="size-3.5" />
+              {t.id === "info" ? (
+                <>
+                  <span className="md:hidden">Info</span>
+                  <span className="hidden md:inline">{t.label}</span>
+                </>
+              ) : (
+                t.label
+              )}
             </button>
           ))}
         </div>

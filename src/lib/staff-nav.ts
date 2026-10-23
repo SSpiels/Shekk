@@ -18,25 +18,42 @@ export type StaffNavId =
   | "team"
   | "settings";
 
-export type StaffNavItem = { id: StaffNavId; label: string; to: string };
+/** `short` is the label for tight spots — the tablet rail and the phone's bottom bar. */
+export type StaffNavItem = { id: StaffNavId; label: string; short: string; to: string };
 
 export const STAFF_NAV: StaffNavItem[] = [
-  { id: "overview", label: "Overview", to: "/staff/overview" },
-  { id: "students", label: "Students", to: "/staff/students" },
-  { id: "onboarding", label: "Onboarding", to: "/staff/onboarding" },
-  { id: "communications", label: "Communications", to: "/staff/communications" },
-  { id: "calendar", label: "Calendar", to: "/staff/calendar" },
-  { id: "content", label: "Content", to: "/staff/content" },
-  { id: "team", label: "Team", to: "/staff/team" },
+  { id: "overview", label: "Overview", short: "Overview", to: "/staff/overview" },
+  { id: "students", label: "Students", short: "Students", to: "/staff/students" },
+  { id: "onboarding", label: "Onboarding", short: "Onboard", to: "/staff/onboarding" },
+  { id: "communications", label: "Communications", short: "Announce", to: "/staff/communications" },
+  { id: "calendar", label: "Calendar", short: "Calendar", to: "/staff/calendar" },
+  { id: "content", label: "Content", short: "Content", to: "/staff/content" },
+  { id: "team", label: "Team", short: "Team", to: "/staff/team" },
 ];
 
 export const STAFF_SETTINGS_NAV: StaffNavItem = {
   id: "settings",
   label: "Settings",
+  short: "Settings",
   to: "/staff/settings",
 };
 
 const ALL_NAV: StaffNavItem[] = [...STAFF_NAV, STAFF_SETTINGS_NAV];
+
+/**
+ * On a phone the bottom bar carries the four things staff reach for on the move; everything
+ * else lives behind "More". The order is the order they appear.
+ */
+export const STAFF_PRIMARY_IDS: StaffNavId[] = ["overview", "students", "communications", "calendar"];
+
+export function staffPrimaryNav(): StaffNavItem[] {
+  return STAFF_PRIMARY_IDS.map((id) => ALL_NAV.find((i) => i.id === id)!);
+}
+
+/** Destinations that sit behind the phone's "More" sheet. */
+export function staffMoreNav(): StaffNavItem[] {
+  return ALL_NAV.filter((i) => !STAFF_PRIMARY_IDS.includes(i.id));
+}
 
 function clean(pathname: string): string {
   const p = pathname.replace(/\/+$/, "");

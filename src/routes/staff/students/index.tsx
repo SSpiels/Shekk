@@ -5,12 +5,13 @@
  * /staff/students?onboarding=incomplete.
  */
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Users } from "lucide-react";
 import { EmptyState, ErrorState, LoadingBlocks } from "@/components/Kit";
 import { StaffFilterBar } from "@/components/staff/students/StaffFilterBar";
+import { StaffGroupsDialog } from "@/components/staff/students/StaffGroupsDialog";
 import { StaffStudentTable } from "@/components/staff/students/StaffStudentTable";
-import { useStaffOS } from "@/components/staff/StaffSessionContext";
+import { useStaffCan, useStaffOS } from "@/components/staff/StaffSessionContext";
 import { useStaffStudentRoster } from "@/lib/useStaffStudents";
 import { filterStaffStudents, type StaffOnboardingFilter } from "@/lib/programme/logic";
 
@@ -30,6 +31,8 @@ function StudentsRoster() {
   const search = Route.useSearch();
   const navigate = Route.useNavigate();
   const cohortId = activeWorkspace?.cohort?.id ?? null;
+  const canGroups = useStaffCan()("groups");
+  const [groupsOpen, setGroupsOpen] = useState(false);
 
   const { data, isLoading, error, refetch } = useStaffStudentRoster(cohortId);
   const students = useMemo(() => data ?? [], [data]);
@@ -75,6 +78,25 @@ function StudentsRoster() {
         groups={groups}
         onboarding={search.onboarding}
         onOnboarding={(onboarding) => setSearch({ onboarding })}
+        actions={
+          canGroups ? (
+            <button
+              type="button"
+              onClick={() => setGroupsOpen(true)}
+              className="tap-flat col-span-2 inline-flex items-center justify-center gap-1.5 rounded-xl border border-border bg-card px-3.5 py-2.5 text-[13px] font-semibold md:col-span-1 md:py-2"
+            >
+              <Users className="size-4" /> Manage groups
+            </button>
+          ) : null
+        }
+      />
+
+      <StaffGroupsDialog
+        open={groupsOpen}
+        onClose={() => setGroupsOpen(false)}
+        cohortId={cohortId}
+        students={students.map((st) => ({ userId: st.userId, displayName: st.displayName, handle: st.handle }))}
+        canManage={canGroups}
       />
 
       {isLoading ? (
