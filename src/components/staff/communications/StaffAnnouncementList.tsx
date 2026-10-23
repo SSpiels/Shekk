@@ -29,7 +29,7 @@ export function StaffAnnouncementList({
   onOpen: (announcement: StaffAnnouncementSummary) => void;
 }) {
   return (
-    <div className="space-y-2.5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 xl:grid-cols-2 xl:items-start">
       {announcements.map((a) => (
         <div
           key={a.id}

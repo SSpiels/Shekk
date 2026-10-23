@@ -33,7 +33,7 @@ export function StaffChecklistList({
   onOpen: (item: ChecklistItem) => void;
 }) {
   return (
-    <div className="space-y-2.5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 xl:grid-cols-2 xl:items-start">
       {items.map((item) => (
         <div
           key={item.id}
@@ -90,7 +90,7 @@ export function StaffRetiredChecklistList({
   restoringId: string | null;
 }) {
   return (
-    <div className="space-y-2.5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 xl:grid-cols-2 xl:items-start">
       {items.map((item) => (
         <div
           key={item.id}
@@ -128,7 +128,7 @@ export function StaffDocumentList({
   onOpen: (doc: ProgrammeDoc) => void;
 }) {
   return (
-    <div className="space-y-2.5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 xl:grid-cols-2 xl:items-start">
       {documents.map((d) => (
         <div key={d.id} role="button" tabIndex={0} onClick={() => onOpen(d)} className={rowClass}>
           <div className="flex items-start justify-between gap-3">
@@ -176,7 +176,7 @@ export function StaffContactList({
   onOpen: (contact: ProgrammeContactRow) => void;
 }) {
   return (
-    <div className="space-y-2.5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 xl:grid-cols-2 xl:items-start">
       {contacts.map((c) => (
         <div
           key={c.id}
@@ -228,7 +228,7 @@ export function StaffPlaceList({
   onOpen: (place: ProgrammePlace) => void;
 }) {
   return (
-    <div className="space-y-2.5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 xl:grid-cols-2 xl:items-start">
       {places.map((p) => (
         <div key={p.id} role="button" tabIndex={0} onClick={() => onOpen(p)} className={rowClass}>
           <p className="font-semibold">{p.label}</p>

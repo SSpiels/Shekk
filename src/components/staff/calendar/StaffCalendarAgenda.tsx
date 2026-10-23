@@ -47,9 +47,9 @@ export function StaffCalendarAgenda({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-x-6 gap-y-5 xl:grid-cols-2 xl:items-start">
       {days.map(([day, dayEvents]) => (
-        <section key={day} className="space-y-2">
+        <section key={day} className="min-w-0 space-y-2">
           <h3 className="text-[12.5px] font-bold uppercase tracking-wide text-muted-foreground">
             {fmtIsraelDayLong(dayEvents[0]!.startsAt)}
           </h3>

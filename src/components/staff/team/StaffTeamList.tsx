@@ -26,7 +26,7 @@ export function StaffTeamMemberList({
   onOpen: (member: StaffTeamMember) => void;
 }) {
   return (
-    <div className="space-y-2.5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 xl:grid-cols-2 xl:items-start">
       {members.map((m) => (
         <div
           key={m.userId}
@@ -83,7 +83,7 @@ export function StaffTeamInviteList({
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   return (
-    <div className="space-y-2.5">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-2.5 xl:grid-cols-2 xl:items-start">
       {invites.map((i) => {
         const link = `${typeof window !== "undefined" ? window.location.origin : ""}/join/${i.code}`;
         return (
