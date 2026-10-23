@@ -55,7 +55,7 @@ function UpdatesScreen() {
       {needsYou.length > 0 ? (
         <section>
           <SectionHead title="Needs you" hint="Confirm or answer, then it moves down the list." />
-          <div className="space-y-2">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-2 lg:grid-cols-2 lg:items-start">
             {needsYou.map((item) => (
               <FeedRow key={item.key} item={item} />
             ))}
@@ -65,7 +65,7 @@ function UpdatesScreen() {
 
       <section>
         <SectionHead title="Everything else" />
-        <div className="space-y-2">
+        <div className="grid grid-cols-[minmax(0,1fr)] gap-2 lg:grid-cols-2 lg:items-start">
           {rest.map((item) => (
             <FeedRow key={item.key} item={item} />
           ))}

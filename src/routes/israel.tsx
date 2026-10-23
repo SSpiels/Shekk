@@ -33,7 +33,7 @@ function MiniTile({ app }: { app: MiniApp }) {
   return (
     <Link to={app.path} className="tap-icon flex flex-col items-center gap-2">
       <span className="relative">
-        <MiniAppIcon app={app} size={58} />
+        <MiniAppIcon app={app} size={60} />
         {app.status === "planned" ? (
           <span className="absolute -right-1 -top-1 rounded-full bg-ink px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-ink-foreground">
             soon
@@ -95,15 +95,15 @@ function ExploreHub() {
     );
 
   return (
-    <AppShell>
+    <AppShell layout="grid">
       <header className="px-5 pt-7">
         <h1 className="font-display text-4xl font-bold tracking-tight">Explore</h1>
         <p className="mt-1 text-sm text-muted-foreground">All your Shekk apps, in one place.</p>
       </header>
 
       {/* search sticks to the top so it's always a thumb away */}
-      <div className="sticky top-0 z-30 -mt-1 bg-background/85 px-5 pb-3 pt-4 backdrop-blur-xl">
-        <label className="flex items-center gap-2 rounded-2xl bg-muted px-4 py-3 text-sm shadow-card">
+      <div className="sticky top-0 z-30 -mt-1 bg-background/85 px-5 pb-3 pt-4 backdrop-blur-xl lg:max-w-2xl">
+        <label className="flex items-center gap-2 rounded-2xl bg-muted px-4 py-3 text-base shadow-card sm:text-sm">
           <Search className="size-4 shrink-0 text-muted-foreground" />
           <input
             value={query}
@@ -120,7 +120,7 @@ function ExploreHub() {
       </div>
 
       {results ? (
-        <section className="px-4 py-6">
+        <section className="px-4 py-6 lg:px-5">
           <p className="mb-4 px-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">
             {results.length} app{results.length === 1 ? "" : "s"}
           </p>
@@ -135,21 +135,24 @@ function ExploreHub() {
           )}
         </section>
       ) : (
-        <section className="space-y-9 px-4 pb-4 pt-3">
+        <section className="space-y-9 px-4 pb-4 pt-3 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0 lg:px-5 lg:pt-4">
           {miniGroups.map((g) => (
-            <section key={g.title}>
-              <div className="mb-3 px-1">
+            <section
+              key={g.title}
+              className="lg:rounded-3xl lg:border lg:border-border lg:bg-card lg:p-6 lg:shadow-card"
+            >
+              <div className="mb-3 px-1 lg:px-0">
                 <h2 className="font-display text-base font-bold leading-tight tracking-tight">{g.title}</h2>
                 <p className="mt-0.5 text-[11px] text-muted-foreground">{g.hint}</p>
               </div>
-              <div className="grid grid-cols-4 gap-x-3 gap-y-5 sm:grid-cols-6 lg:grid-cols-9">
+              <div className="grid grid-cols-4 gap-x-3 gap-y-5 sm:grid-cols-6 lg:grid-cols-5 lg:gap-y-6">
                 {g.apps.map((app) => (
                   <MiniTile key={app.id} app={app} />
                 ))}
               </div>
             </section>
           ))}
-          <p className="px-1 text-center text-[11px] leading-relaxed text-muted-foreground">
+          <p className="px-1 text-center text-[11px] leading-relaxed text-muted-foreground lg:col-span-2">
             Apps marked “soon” open an honest explainer until the integration is live.
           </p>
         </section>

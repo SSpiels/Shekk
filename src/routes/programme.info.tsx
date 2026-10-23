@@ -62,8 +62,8 @@ function InfoScreen() {
             body="When your programme publishes what to sort before you fly, it lands here."
           />
         ) : (
-          <section className="space-y-2">
-            <Card>
+          <section className="grid grid-cols-[minmax(0,1fr)] gap-2 lg:grid-cols-2 lg:items-start">
+            <Card className="lg:col-span-2">
               <p className="text-sm font-semibold">
                 {checklist.done} of {checklist.total} done
               </p>
@@ -86,7 +86,7 @@ function InfoScreen() {
             {emergency.length > 0 ? (
               <section>
                 <SectionHead title="If something goes wrong" />
-                <div className="space-y-2">
+                <div className="grid grid-cols-[minmax(0,1fr)] gap-2 lg:grid-cols-2 lg:items-start">
                   {emergency.map((c) => (
                     <ContactRow key={c.id} contact={c} />
                   ))}
@@ -96,7 +96,7 @@ function InfoScreen() {
             {others.length > 0 ? (
               <section>
                 <SectionHead title="Programme team" />
-                <div className="space-y-2">
+                <div className="grid grid-cols-[minmax(0,1fr)] gap-2 lg:grid-cols-2 lg:items-start">
                   {others.map((c) => (
                     <ContactRow key={c.id} contact={c} />
                   ))}
@@ -111,7 +111,7 @@ function InfoScreen() {
         hub.documents.length === 0 ? (
           <EmptyState icon={FileText} title="No documents yet" body="Forms and letters your programme shares appear here." />
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-2 lg:grid-cols-2 lg:items-start">
             {hub.documents.map((d) => (
               <DocRow key={d.id} doc={d} />
             ))}
@@ -123,7 +123,7 @@ function InfoScreen() {
         hub.places.length === 0 ? (
           <EmptyState icon={MapPin} title="No places yet" body="Your campus, dorm and meeting points show up here." />
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-2 lg:grid-cols-2 lg:items-start">
             {hub.places.map((p) => (
               <PlaceRow key={p.id} place={p} />
             ))}

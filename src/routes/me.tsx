@@ -88,8 +88,8 @@ function Me() {
       : "Travelling independently";
 
   return (
-    <AppShell>
-      <header className="bg-ink px-5 pb-8 pt-7 text-ink-foreground">
+    <AppShell layout="grid">
+      <header className="bg-ink px-5 pb-8 pt-7 text-ink-foreground lg:mt-2 lg:rounded-3xl lg:px-8">
         <div className="flex items-center gap-4">
           <button
             type="button"
@@ -152,7 +152,9 @@ function Me() {
         )}
       </header>
 
-      <div className="space-y-5 px-4 py-5">
+      {/* One column on a phone; on a desktop, who you are (workspace, tag) beside everything you can open. */}
+      <div className="space-y-5 px-4 py-5 lg:grid lg:grid-cols-12 lg:items-start lg:gap-6 lg:space-y-0 lg:px-0">
+        <div className="min-w-0 space-y-5 lg:col-span-5">
         <WorkspaceCard />
 
         {MONEY_ENABLED ? <ReverifyBanner /> : null}
@@ -168,7 +170,9 @@ function Me() {
             </p>
           </Card>
         ) : null}
+        </div>
 
+        <div className="min-w-0 space-y-5 lg:col-span-7">
         <div>
           <SectionHead title="Your Shekk" />
           <Card className="p-0">
@@ -244,6 +248,7 @@ function Me() {
             </Card>
           </div>
         ) : null}
+        </div>
       </div>
 
       <Sheet open={pickerOpen} onClose={() => setPickerOpen(false)} title="Choose your avatar">

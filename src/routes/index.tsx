@@ -416,7 +416,7 @@ function HomeScreen() {
   const journey = getJourney(travel);
 
   return (
-    <AppShell>
+    <AppShell layout="grid">
       <div className="px-5 pb-1 pt-6">
         <div className="flex items-center gap-2 pr-12">
           <img
@@ -424,9 +424,9 @@ function HomeScreen() {
             alt="Shekk logo"
             width={30}
             height={30}
-            className="size-[30px] rounded-lg border border-border bg-white"
+            className="size-[30px] rounded-lg border border-border bg-white lg:hidden"
           />
-          <span className="font-display text-xl font-bold leading-none tracking-tight text-primary">Shekk</span>
+          <span className="font-display text-xl font-bold leading-none tracking-tight text-primary lg:hidden">Shekk</span>
           {journey.chip ? (
             <StatusPill tone="pending" className="ml-auto">
               {journey.chip}
@@ -456,64 +456,71 @@ function HomeScreen() {
         </div>
       ) : null}
 
-      <LocationBar />
+      {/* One column on a phone and tablet; on a desktop, what's happening (programme, widgets, what's on)
+          sits beside what to sort (setup, services, your apps). */}
+      <div className="lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-8">
+        <div className="min-w-0 lg:col-span-7">
+          <LocationBar />
+          <ProgrammePanel />
+          <ForYou />
+          <WhatsOn />
+        </div>
 
-      <ProgrammePanel />
-      <ForYou />
-      <SetupPanel />
-      <ActiveNow />
-      <WhatsOn />
-      <ServicePrompts />
+        <div className="min-w-0 lg:col-span-5">
+          <SetupPanel />
+          <ActiveNow />
+          <ServicePrompts />
 
-
-      <div className="px-4 pt-6">
-        <SectionHead
-          title="Jump back in"
-          hint="The apps and tools you used most recently"
-          action={
-            <Link to="/israel" className="tap-flat text-[12.5px] font-semibold text-primary">
-              Explore
-            </Link>
-          }
-        />
-        {recents.length === 0 ? (
-          <EmptyState
-            icon={Compass}
-            title="Nothing here yet"
-            body="Open something from Explore — transport, food, guides — and it'll wait for you here."
-            actionLabel="Browse Explore"
-            actionTo="/israel"
-          />
-        ) : (
-          <div className="grid grid-cols-5 gap-x-2 gap-y-5">
-            {recents.map((s) => (
-              <AppIcon key={s.id} service={s} />
-            ))}
+          <div className="px-4 pt-6">
+            <SectionHead
+              title="Jump back in"
+              hint="The apps and tools you used most recently"
+              action={
+                <Link to="/israel" className="tap-flat text-[12.5px] font-semibold text-primary">
+                  Explore
+                </Link>
+              }
+            />
+            {recents.length === 0 ? (
+              <EmptyState
+                icon={Compass}
+                title="Nothing here yet"
+                body="Open something from Explore — transport, food, guides — and it'll wait for you here."
+                actionLabel="Browse Explore"
+                actionTo="/israel"
+              />
+            ) : (
+              <div className="grid grid-cols-5 gap-x-2 gap-y-5">
+                {recents.map((s) => (
+                  <AppIcon key={s.id} service={s} />
+                ))}
+              </div>
+            )}
           </div>
-        )}
+
+          {promos.length > 0 ? (
+            <section className="pt-6">
+              <div className="px-4">
+                <SectionHead title="Worth knowing" hint="From the Shekk team" />
+              </div>
+              <div className="scrollbar-none flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 scroll-px-5 pb-1">
+                {promos.map((p) => (
+                  <Link
+                    key={p.id}
+                    to={p.ctaHref}
+                    className="tap w-[260px] shrink-0 snap-start rounded-2xl border border-border bg-card p-4 shadow-card"
+                  >
+                    <span className="text-2xl">{p.emoji}</span>
+                    <p className="mt-2 text-sm font-semibold leading-snug">{p.title}</p>
+                    <p className="mt-1 text-[12px] text-muted-foreground">{p.blurb}</p>
+                    <p className="mt-2 text-[12px] font-semibold text-primary">{p.ctaLabel} →</p>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </div>
       </div>
-
-      {promos.length > 0 ? (
-        <section className="pt-6">
-          <div className="px-4">
-            <SectionHead title="Worth knowing" hint="From the Shekk team" />
-          </div>
-          <div className="scrollbar-none flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 scroll-px-5 pb-1">
-            {promos.map((p) => (
-              <Link
-                key={p.id}
-                to={p.ctaHref}
-                className="tap w-[260px] shrink-0 snap-start rounded-2xl border border-border bg-card p-4 shadow-card"
-              >
-                <span className="text-2xl">{p.emoji}</span>
-                <p className="mt-2 text-sm font-semibold leading-snug">{p.title}</p>
-                <p className="mt-1 text-[12px] text-muted-foreground">{p.blurb}</p>
-                <p className="mt-2 text-[12px] font-semibold text-primary">{p.ctaLabel} →</p>
-              </Link>
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       <div className="pb-8" />
     </AppShell>

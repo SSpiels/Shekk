@@ -98,8 +98,10 @@ function ProgrammeLayout() {
   }
 
   return (
-    <AppShell>
-      <div className="px-4 pt-4">
+    <AppShell layout="grid">
+      {/* Phone and tablet: a title row, so the menu button isn't sitting on the banner. */}
+      <h1 className="px-5 pb-1 pt-5 font-display text-[1.7rem] font-bold leading-tight tracking-tight lg:hidden">Programme</h1>
+      <div className="px-4 pt-2 lg:pt-4">
         <div className="grad-balance relative overflow-hidden rounded-[1.5rem] px-5 py-5 text-ink-foreground shadow-lift">
           <span className="card-sheen pointer-events-none absolute inset-0" aria-hidden />
           <div className="relative">

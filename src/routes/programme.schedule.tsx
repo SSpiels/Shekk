@@ -59,16 +59,18 @@ function ScheduleScreen() {
           body="Your programme hasn't published a timetable. It appears here the moment they do."
         />
       ) : (
-        days.map(([day, events]) => (
-          <section key={day}>
-            <SectionHead title={fmtIsraelDayLong(events[0]!.startsAt)} />
-            <div className="space-y-2">
-              {events.map((e) => (
-                <EventRow key={e.id} event={e} onOpen={() => setOpen(e)} />
-              ))}
-            </div>
-          </section>
-        ))
+        <div className="space-y-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-8 lg:gap-y-6 lg:space-y-0">
+          {days.map(([day, events]) => (
+            <section key={day}>
+              <SectionHead title={fmtIsraelDayLong(events[0]!.startsAt)} />
+              <div className="space-y-2">
+                {events.map((e) => (
+                  <EventRow key={e.id} event={e} onOpen={() => setOpen(e)} />
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
       )}
 
       <EventSheet event={open} hub={hub} onClose={() => setOpen(null)} />

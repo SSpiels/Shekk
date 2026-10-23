@@ -158,7 +158,7 @@ function GuidesIndex() {
           ) : null}
 
           {/* Category filter */}
-          <div className="flex gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div className="flex gap-2 overflow-x-auto px-5 pb-1 [scrollbar-width:none] lg:flex-wrap lg:overflow-visible [&::-webkit-scrollbar]:hidden">
             {[{ id: "all" as const, label: "All", emoji: "✳️" }, ...GUIDE_CATEGORIES].map((c) => (
               <button
                 key={c.id}

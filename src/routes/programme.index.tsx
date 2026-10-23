@@ -46,213 +46,221 @@ function TodayScreen() {
   const pinned = hub.announcements.filter((a) => a.pinned || a.priority === "urgent").slice(0, 2);
   const focus = now ?? next;
 
+  const openVotes = hub.votes.filter((v) => v.status === "open");
+
+  // Phone: one column in the order a participant needs it (the `order-*` classes). Desktop: what is
+  // happening on the left, what needs doing on the right (the wrappers stop being transparent at lg).
   return (
-    <div className="space-y-8 px-4 pb-10 pt-4">
+    <div className="flex flex-col gap-8 px-4 pb-10 pt-4 lg:grid lg:grid-cols-12 lg:items-start lg:gap-x-8 lg:gap-y-0">
       {hub.welcomeMessage ? (
-        <p className="rounded-2xl border border-border bg-card p-4 text-xs leading-relaxed text-muted-foreground shadow-card">
+        <p className="order-none rounded-2xl border border-border bg-card p-4 text-xs leading-relaxed text-muted-foreground shadow-card lg:col-span-12 lg:mb-8">
           {hub.welcomeMessage}
         </p>
       ) : null}
 
-      {/* NOW / NEXT — the one thing a participant opens the app for. */}
-      <section>
-        <SectionHead title={now ? "Happening now" : "Next up"} />
-        {focus ? (
-          <button type="button" onClick={() => setOpen(focus)} className="tap block w-full text-left">
-            <Card className="border-primary/40">
-              <div className="flex items-center gap-2">
-                {now ? <Radio className="size-4 shrink-0 animate-pulse text-primary" /> : null}
-                <StatusChip status={focus.status} />
-                <Freshness event={focus} />
-              </div>
-              <p className="mt-2 font-display text-lg font-bold leading-tight">{focus.title}</p>
-              <p className="mt-1 text-sm font-semibold text-primary">
-                {fmtIsraelTime(focus.startsAt)}
-                {focus.endsAt ? ` – ${fmtIsraelTime(focus.endsAt)}` : ""}
-              </p>
-              {focus.locationLabel ? (
-                <p className="mt-0.5 text-xs text-muted-foreground">{focus.locationLabel}</p>
-              ) : null}
-              {focus.meetingPoint ? (
-                <p className="mt-0.5 text-xs text-muted-foreground">Meet at {focus.meetingPoint}</p>
-              ) : null}
-              {focus.statusNote ? (
-                <p className="mt-2 text-[12.5px] font-medium text-warning-foreground">{focus.statusNote}</p>
-              ) : null}
-              <p className="mt-2 text-[11px] font-bold uppercase tracking-wide text-primary">Open details →</p>
-            </Card>
-          </button>
-        ) : (
-          <EmptyState
-            icon={CalendarClock}
-            title="Nothing scheduled right now"
-            body="When your programme adds something, it shows up here first."
-          />
-        )}
-      </section>
-
-      {/* One honest to-do list: only things this participant can clear. */}
-      {todo.length > 0 ? (
-        <section>
-          <SectionHead title="You need to" hint="Short list. It empties as you go." />
-          <div className="space-y-2">
-            {(allTodo ? todo : todo.slice(0, 3)).map((a) => {
-              const event = a.eventId ? hub.events.find((e) => e.id === a.eventId) : null;
-              return (
-                <TapRow
-                  key={a.key}
-                  title={a.title}
-                  detail={a.detail}
-                  tone={a.urgent ? "urgent" : "plain"}
-                  onClick={() => {
-                    if (event) {
-                      setOpen(event);
-                      return;
-                    }
-                    if (a.kind === "checklist" && a.itemId) {
-                      tick.mutate({ itemId: a.itemId, done: true });
-                      return;
-                    }
-                    window.location.assign("/programme/inbox");
-                  }}
-                />
-              );
-            })}
-            {todo.length > 3 ? (
-              <button
-                type="button"
-                onClick={() => setAllTodo((v) => !v)}
-                className="tap-flat w-full rounded-2xl border border-border bg-card px-4 py-2.5 text-[12.5px] font-bold text-primary"
-              >
-                {allTodo ? "Show less" : `Show ${todo.length - 3} more`}
-              </button>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-
-      {changes.length > 0 ? (
-        <section>
-          <SectionHead title="What changed" />
-          <div className="space-y-2">
-            {changes.slice(0, 4).map((c) => (
-              <Card key={c.id} className="border-notice-border bg-notice-soft">
-                <p className="text-[13px] font-semibold text-notice-foreground">{c.eventTitle}</p>
-                <p className="mt-0.5 text-[12px] text-notice-foreground/90">{changeLine(c)}</p>
-                {c.note ? <p className="mt-0.5 text-[12px] text-notice-foreground/90">{c.note}</p> : null}
+      <div className="contents lg:col-span-7 lg:block lg:space-y-8">
+        {/* NOW / NEXT — the one thing a participant opens the app for. */}
+        <section className="order-1">
+          <SectionHead title={now ? "Happening now" : "Next up"} />
+          {focus ? (
+            <button type="button" onClick={() => setOpen(focus)} className="tap block w-full text-left">
+              <Card className="border-primary/40">
+                <div className="flex items-center gap-2">
+                  {now ? <Radio className="size-4 shrink-0 animate-pulse text-primary" /> : null}
+                  <StatusChip status={focus.status} />
+                  <Freshness event={focus} />
+                </div>
+                <p className="mt-2 font-display text-lg font-bold leading-tight">{focus.title}</p>
+                <p className="mt-1 text-sm font-semibold text-primary">
+                  {fmtIsraelTime(focus.startsAt)}
+                  {focus.endsAt ? ` – ${fmtIsraelTime(focus.endsAt)}` : ""}
+                </p>
+                {focus.locationLabel ? (
+                  <p className="mt-0.5 text-xs text-muted-foreground">{focus.locationLabel}</p>
+                ) : null}
+                {focus.meetingPoint ? (
+                  <p className="mt-0.5 text-xs text-muted-foreground">Meet at {focus.meetingPoint}</p>
+                ) : null}
+                {focus.statusNote ? (
+                  <p className="mt-2 text-[12.5px] font-medium text-warning-foreground">{focus.statusNote}</p>
+                ) : null}
+                <p className="mt-2 text-[11px] font-bold uppercase tracking-wide text-primary">Open details →</p>
               </Card>
-            ))}
-          </div>
+            </button>
+          ) : (
+            <EmptyState
+              icon={CalendarClock}
+              title="Nothing scheduled right now"
+              body="When your programme adds something, it shows up here first."
+            />
+          )}
         </section>
-      ) : null}
 
-      {pinned.length > 0 ? (
-        <section>
+        <section className="order-5">
           <SectionHead
-            title="Pinned"
+            title={`Today · ${fmtIsraelDayLong(new Date().toISOString())}`}
             action={
-              <Link to="/programme/inbox" className="text-[12px] font-bold text-primary">
-                All updates →
+              <Link to="/programme/schedule" className="text-[12px] font-bold text-primary">
+                All days →
               </Link>
             }
           />
-          <div className="space-y-2">
-            {pinned.map((a) => (
-              <AnnouncementCard key={a.id} announcement={a} />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      <section>
-        <SectionHead
-          title={`Today · ${fmtIsraelDayLong(new Date().toISOString())}`}
-          action={
-            <Link to="/programme/schedule" className="text-[12px] font-bold text-primary">
-              All days →
-            </Link>
-          }
-        />
-        {today.length === 0 ? (
-          <EmptyState icon={CalendarClock} title="Nothing on today" body="Check the full schedule for the days ahead." />
-        ) : (
-          <div className="space-y-2">
-            {today.map((e) => (
-              <EventRow key={e.id} event={e} onOpen={() => setOpen(e)} />
-            ))}
-          </div>
-        )}
-      </section>
-
-      {hub.votes.filter((v) => v.status === "open").length > 0 ? (
-        <section>
-          <SectionHead title="Your programme is asking" />
-          <div className="space-y-2">
-            {hub.votes
-              .filter((v) => v.status === "open")
-              .map((v) => (
-                <VoteCard key={v.id} vote={v} />
+          {today.length === 0 ? (
+            <EmptyState icon={CalendarClock} title="Nothing on today" body="Check the full schedule for the days ahead." />
+          ) : (
+            <div className="space-y-2">
+              {today.map((e) => (
+                <EventRow key={e.id} event={e} onOpen={() => setOpen(e)} />
               ))}
-          </div>
+            </div>
+          )}
         </section>
-      ) : null}
 
-      {checklist.total > 0 ? (
-        checklist.done === checklist.total ? (
-          <Milestone
-            title="Programme checklist complete"
-            body="Everything your programme asked for is done. Nothing left to chase."
-            actionLabel="See what's next"
-            actionTo="/israel"
-          />
-        ) : (
-          <section>
+        {pinned.length > 0 ? (
+          <section className="order-4">
             <SectionHead
-              title="Before you fly"
+              title="Pinned"
               action={
-                <Link to="/programme/info" className="text-[12px] font-bold text-primary">
-                  Open →
+                <Link to="/programme/inbox" className="text-[12px] font-bold text-primary">
+                  All updates →
                 </Link>
               }
             />
-            <Card>
-              <p className="text-sm font-semibold">
-                {checklist.done} of {checklist.total} done
-              </p>
-              <div className="mt-2">
-                <ProgressBar value={checklist.total ? checklist.done / checklist.total : 0} />
-              </div>
-              {checklist.requiredTotal > checklist.requiredDone ? (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  {checklist.requiredTotal - checklist.requiredDone} required{" "}
-                  {checklist.requiredTotal - checklist.requiredDone === 1 ? "item" : "items"} still to do.
-                </p>
-              ) : null}
-            </Card>
+            <div className="space-y-2">
+              {pinned.map((a) => (
+                <AnnouncementCard key={a.id} announcement={a} />
+              ))}
+            </div>
           </section>
-        )
-      ) : null}
+        ) : null}
+      </div>
 
-      {/* Cross-integration: the programme sends people to the rest of Shekk. */}
-      <section>
-        <SectionHead title="Get set up" />
-        <div className="grid grid-cols-2 gap-2">
-          <Link to="/services/esim" className="tap">
-            <Card className="h-full">
-              <Signal className="size-5 text-primary" />
-              <p className="mt-2 text-[13px] font-semibold">Israeli SIM</p>
-              <p className="text-[11px] text-muted-foreground">Stay reachable on arrival.</p>
-            </Card>
-          </Link>
-          <Link to="/before-you-fly" className="tap">
-            <Card className="h-full">
-              <Sparkles className="size-5 text-primary" />
-              <p className="mt-2 text-[13px] font-semibold">Before you fly</p>
-              <p className="text-[11px] text-muted-foreground">Everything to sort at home.</p>
-            </Card>
-          </Link>
-        </div>
-      </section>
+      <div className="contents lg:col-span-5 lg:block lg:space-y-8">
+        {/* One honest to-do list: only things this participant can clear. */}
+        {todo.length > 0 ? (
+          <section className="order-2">
+            <SectionHead title="You need to" hint="Short list. It empties as you go." />
+            <div className="space-y-2">
+              {(allTodo ? todo : todo.slice(0, 3)).map((a) => {
+                const event = a.eventId ? hub.events.find((e) => e.id === a.eventId) : null;
+                return (
+                  <TapRow
+                    key={a.key}
+                    title={a.title}
+                    detail={a.detail}
+                    tone={a.urgent ? "urgent" : "plain"}
+                    onClick={() => {
+                      if (event) {
+                        setOpen(event);
+                        return;
+                      }
+                      if (a.kind === "checklist" && a.itemId) {
+                        tick.mutate({ itemId: a.itemId, done: true });
+                        return;
+                      }
+                      window.location.assign("/programme/inbox");
+                    }}
+                  />
+                );
+              })}
+              {todo.length > 3 ? (
+                <button
+                  type="button"
+                  onClick={() => setAllTodo((v) => !v)}
+                  className="tap-flat w-full rounded-2xl border border-border bg-card px-4 py-2.5 text-[12.5px] font-bold text-primary"
+                >
+                  {allTodo ? "Show less" : `Show ${todo.length - 3} more`}
+                </button>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
+
+        {changes.length > 0 ? (
+          <section className="order-3">
+            <SectionHead title="What changed" />
+            <div className="space-y-2">
+              {changes.slice(0, 4).map((c) => (
+                <Card key={c.id} className="border-notice-border bg-notice-soft">
+                  <p className="text-[13px] font-semibold text-notice-foreground">{c.eventTitle}</p>
+                  <p className="mt-0.5 text-[12px] text-notice-foreground/90">{changeLine(c)}</p>
+                  {c.note ? <p className="mt-0.5 text-[12px] text-notice-foreground/90">{c.note}</p> : null}
+                </Card>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {openVotes.length > 0 ? (
+          <section className="order-6">
+            <SectionHead title="Your programme is asking" />
+            <div className="space-y-2">
+              {openVotes.map((v) => (
+                <VoteCard key={v.id} vote={v} />
+              ))}
+            </div>
+          </section>
+        ) : null}
+
+        {checklist.total > 0 ? (
+          checklist.done === checklist.total ? (
+            <div className="order-7">
+              <Milestone
+                title="Programme checklist complete"
+                body="Everything your programme asked for is done. Nothing left to chase."
+                actionLabel="See what's next"
+                actionTo="/israel"
+              />
+            </div>
+          ) : (
+            <section className="order-7">
+              <SectionHead
+                title="Before you fly"
+                action={
+                  <Link to="/programme/info" className="text-[12px] font-bold text-primary">
+                    Open →
+                  </Link>
+                }
+              />
+              <Card>
+                <p className="text-sm font-semibold">
+                  {checklist.done} of {checklist.total} done
+                </p>
+                <div className="mt-2">
+                  <ProgressBar value={checklist.total ? checklist.done / checklist.total : 0} />
+                </div>
+                {checklist.requiredTotal > checklist.requiredDone ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    {checklist.requiredTotal - checklist.requiredDone} required{" "}
+                    {checklist.requiredTotal - checklist.requiredDone === 1 ? "item" : "items"} still to do.
+                  </p>
+                ) : null}
+              </Card>
+            </section>
+          )
+        ) : null}
+
+        {/* Cross-integration: the programme sends people to the rest of Shekk. */}
+        <section className="order-8">
+          <SectionHead title="Get set up" />
+          <div className="grid grid-cols-2 gap-2">
+            <Link to="/services/esim" className="tap">
+              <Card className="h-full">
+                <Signal className="size-5 text-primary" />
+                <p className="mt-2 text-[13px] font-semibold">Israeli SIM</p>
+                <p className="text-[11px] text-muted-foreground">Stay reachable on arrival.</p>
+              </Card>
+            </Link>
+            <Link to="/before-you-fly" className="tap">
+              <Card className="h-full">
+                <Sparkles className="size-5 text-primary" />
+                <p className="mt-2 text-[13px] font-semibold">Before you fly</p>
+                <p className="text-[11px] text-muted-foreground">Everything to sort at home.</p>
+              </Card>
+            </Link>
+          </div>
+        </section>
+      </div>
 
       <EventSheet event={open} hub={hub} onClose={() => setOpen(null)} />
     </div>

@@ -107,10 +107,21 @@ export function Notice({
  */
 export function MobileNav() {
   const isActive = useActive();
+  const fluid = useContext(LayoutContext) !== "phone";
 
   return (
-    <div className="fixed bottom-0 left-1/2 z-30 w-full max-w-[430px] -translate-x-1/2 border-t border-border bg-card lg:hidden">
-      <nav className="flex items-end justify-between px-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-2">
+    <div
+      className={
+        fluid
+          ? "fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card lg:hidden"
+          : "fixed bottom-0 left-1/2 z-30 w-full max-w-[430px] -translate-x-1/2 border-t border-border bg-card lg:hidden"
+      }
+    >
+      <nav
+        className={`flex items-end justify-between px-2 pb-[max(0.6rem,env(safe-area-inset-bottom))] pt-2 ${
+          fluid ? "mx-auto max-w-[560px]" : ""
+        }`}
+      >
         {TABS.map(({ to, label, Icon }) => {
           const active = isActive(to);
           return (
@@ -139,6 +150,7 @@ export function QuickMenu() {
   const [open, setOpen] = useState(false);
   const unread = useUnreadChats();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const fluid = useContext(LayoutContext) !== "phone";
 
   useEffect(() => {
     setOpen(false);
@@ -146,16 +158,24 @@ export function QuickMenu() {
 
   return (
     <div className="lg:hidden">
-      <div className="pointer-events-none fixed left-1/2 top-0 z-50 w-full max-w-[430px] -translate-x-1/2">
-        <button
-          type="button"
-          aria-label={open ? "Close quick menu" : "Open quick menu"}
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-          className="tap pointer-events-auto absolute right-3 top-3 rounded-full border border-border bg-card p-2.5 text-foreground shadow-card"
-        >
-          {open ? <X className="size-5" /> : <Menu className="size-5" />}
-        </button>
+      <div
+        className={
+          fluid
+            ? "pointer-events-none fixed inset-x-0 top-0 z-50"
+            : "pointer-events-none fixed left-1/2 top-0 z-50 w-full max-w-[430px] -translate-x-1/2"
+        }
+      >
+        <div className={fluid ? "relative mx-auto w-full max-w-[720px]" : ""}>
+          <button
+            type="button"
+            aria-label={open ? "Close quick menu" : "Open quick menu"}
+            aria-expanded={open}
+            onClick={() => setOpen((v) => !v)}
+            className="tap pointer-events-auto absolute right-3 top-3 rounded-full border border-border bg-card p-2.5 text-foreground shadow-card"
+          >
+            {open ? <X className="size-5" /> : <Menu className="size-5" />}
+          </button>
+        </div>
       </div>
 
 
@@ -167,7 +187,13 @@ export function QuickMenu() {
             onClick={() => setOpen(false)}
             className="fixed inset-0 z-40 cursor-default"
           />
-          <div className="fixed left-1/2 top-16 z-50 ml-[-15px] w-60 max-w-[calc(100vw-1.5rem)] translate-x-[calc(215px-100%)] overflow-hidden rounded-2xl border border-border bg-card shadow-lift">
+          <div
+            className={`fixed top-16 z-50 w-60 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-border bg-card shadow-lift ${
+              fluid
+                ? "right-[max(0.75rem,calc(50vw-360px+0.75rem))]"
+                : "left-1/2 ml-[-15px] translate-x-[calc(215px-100%)]"
+            }`}
+          >
             <Link to="/before-you-fly" className="tap-flat flex items-center gap-2 border-b border-border px-4 py-3 text-sm font-bold text-primary">
               <PlaneTakeoff className="size-4" /> Israel setup
             </Link>
@@ -269,46 +295,86 @@ function FloatingBack() {
   );
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+/**
+ * How a screen sits in the page.
+ *  - phone:  the phone column — mini-apps, and anything that is deliberately its own little app.
+ *  - column: a Shekk screen that is still one column: fluid on a tablet, a centred column on a desktop.
+ *  - grid:   a Shekk screen laid out for a desktop: it gets the whole width and arranges itself in columns.
+ */
+export type ShellLayout = "phone" | "column" | "grid";
+const LayoutContext = createContext<ShellLayout>("phone");
+
+/** Desktop sidebar (lg and up). */
+function DesktopSidebar() {
   const isActive = useActive();
+  return (
+    <aside className="hidden lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-64 lg:shrink-0 lg:flex-col lg:gap-1 lg:overflow-y-auto lg:border-r lg:border-border lg:bg-card lg:px-4 lg:py-8">
+      <div className="mb-4 flex items-center gap-2 px-3">
+        <img src="/logo.png" alt="Shekk logo" width={32} height={32} className="size-8 rounded-lg border border-border bg-white" />
+        <p className="font-display text-xl font-bold">Shekk</p>
+      </div>
+
+      {SIDEBAR_TABS.map(({ to, label, Icon }) => {
+        const active = isActive(to);
+        return (
+          <Link
+            key={to}
+            to={to}
+            className={`tap-flat flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold ${
+              active ? "bg-primary-soft text-primary" : "text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            <Icon className="size-5 shrink-0" strokeWidth={active ? 2.4 : 1.8} />
+            <span className="truncate">{label}</span>
+          </Link>
+        );
+      })}
+      <NavBalance />
+    </aside>
+  );
+}
+
+export function AppShell({ children, layout }: { children: ReactNode; layout?: ShellLayout }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   /* Tab roots get the Shekk chrome. Anything deeper is a mini app or info page:
      no tab bar, no Shekk quick menu — it runs as its own little app. */
   const isTabRoot = keepsChrome(pathname);
   const standalone = !isTabRoot;
   const [hasHeader, setHasHeader] = useState(false);
+  // Shekk screens adapt to the device; mini-apps keep the phone column.
+  const mode: ShellLayout = layout ?? (isTabRoot ? "column" : "phone");
 
   useEffect(() => {
     setHasHeader(false);
   }, [pathname]);
 
+  if (mode !== "phone") {
+    return (
+      <LayoutContext.Provider value={mode}>
+        <div className="min-h-screen bg-background lg:flex">
+          <DesktopSidebar />
+          <div className="min-w-0 flex-1">
+            <div
+              className={`relative mx-auto flex min-h-screen w-full flex-col sm:max-w-[720px] lg:min-h-0 lg:px-4 lg:pt-6 ${
+                mode === "grid" ? "lg:max-w-[1240px]" : "lg:max-w-[760px]"
+              }`}
+            >
+              <QuickMenu />
+              <MobileNav />
+              <div className="flex-1 pb-28 lg:pb-10">
+                <MembershipDunningBanner />
+                <HeaderRegistry.Provider value={setHasHeader}>{children}</HeaderRegistry.Provider>
+              </div>
+            </div>
+          </div>
+        </div>
+      </LayoutContext.Provider>
+    );
+  }
 
   return (
     <div className="lg:flex lg:min-h-screen lg:bg-ink/[0.03]">
-      {/* Desktop sidebar */}
-      <aside className="hidden lg:flex lg:w-64 lg:shrink-0 lg:flex-col lg:gap-1 lg:border-r lg:border-border lg:bg-card lg:px-4 lg:py-8">
-        <div className="mb-4 flex items-center gap-2 px-3">
-          <img src="/logo.png" alt="Shekk logo" width={32} height={32} className="size-8 rounded-lg border border-border bg-white" />
-          <p className="font-display text-xl font-bold">Shekk</p>
-        </div>
-
-        {SIDEBAR_TABS.map(({ to, label, Icon }) => {
-          const active = isActive(to);
-          return (
-            <Link
-              key={to}
-              to={to}
-              className={`tap-flat flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold ${
-                active ? "bg-primary-soft text-primary" : "text-muted-foreground hover:bg-muted"
-              }`}
-            >
-              <Icon className="size-5 shrink-0" strokeWidth={active ? 2.4 : 1.8} />
-              <span className="truncate">{label}</span>
-            </Link>
-          );
-        })}
-        <NavBalance />
-      </aside>
+      <DesktopSidebar />
 
       <div className="lg:flex lg:min-w-0 lg:flex-1 lg:justify-center lg:px-8 lg:py-8">
         <div className="lg:w-full lg:max-w-3xl lg:overflow-hidden lg:rounded-3xl lg:border lg:border-border lg:bg-background lg:shadow-card">
@@ -361,6 +427,7 @@ export function ScreenHeader({
      screen and gets one small floating back button, like a real app. */
   const inMiniApp = !keepsChrome(pathname) && miniAppFor(pathname) !== null;
   const register = useContext(HeaderRegistry);
+  const layout = useContext(LayoutContext);
 
   useEffect(() => {
     register?.(true);
@@ -387,6 +454,31 @@ export function ScreenHeader({
         >
           <ChevronLeft className="size-5" />
         </button>
+      </>
+    );
+  }
+
+  if (layout !== "phone") {
+    return (
+      <>
+        {/* spacer keeps content clear of the fixed header on mobile and tablet */}
+        <div className="h-[60px] lg:hidden" aria-hidden />
+        <header className="fixed inset-x-0 top-0 z-40 border-b border-border bg-card lg:sticky lg:inset-x-auto lg:mb-4 lg:rounded-2xl lg:border">
+          <div className="mx-auto flex w-full max-w-[720px] items-center gap-3 px-4 py-3 pr-16 lg:max-w-none lg:pr-4">
+            <button
+              type="button"
+              aria-label="Go back"
+              onClick={goBack}
+              className="tap shrink-0 rounded-full bg-muted p-2 text-foreground"
+            >
+              <ChevronLeft className="size-5" />
+            </button>
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-semibold">{title}</h1>
+              {subtitle ? <p className="truncate text-xs text-muted-foreground">{subtitle}</p> : null}
+            </div>
+          </div>
+        </header>
       </>
     );
   }

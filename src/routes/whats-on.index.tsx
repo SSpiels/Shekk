@@ -184,14 +184,16 @@ function WhatsOnScreen() {
   const savedCount = tickets?.length ?? null;
 
   return (
-    <AppShell>
+    <AppShell layout="grid">
       <header className="px-5 pt-5">
         <h1 className="font-display text-3xl font-bold tracking-tight">What&apos;s On</h1>
         <p className="mt-0.5 text-sm text-muted-foreground">See what&apos;s actually on, right now.</p>
       </header>
 
-      <div className="sticky top-0 z-30 -mt-1 space-y-2.5 bg-background/85 px-4 pb-3 pt-3 backdrop-blur-xl">
-        <label className="flex items-center gap-2 rounded-2xl bg-muted px-4 py-2.5 text-sm shadow-card">
+      {/* A phone stacks filters above the list; a desktop keeps them in a panel beside it. */}
+      <div className="lg:grid lg:grid-cols-[19rem_minmax(0,1fr)] lg:items-start lg:gap-x-8 lg:pt-4">
+      <div className="sticky top-0 z-30 -mt-1 space-y-2.5 bg-background/85 px-4 pb-3 pt-3 backdrop-blur-xl lg:top-6 lg:z-10 lg:mt-0 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto lg:rounded-3xl lg:border lg:border-border lg:bg-card lg:p-5 lg:shadow-card lg:backdrop-blur-none">
+        <label className="flex items-center gap-2 rounded-2xl bg-muted px-4 py-2.5 text-base shadow-card sm:text-sm">
           <Search className="size-4 shrink-0 text-muted-foreground" />
           <input
             value={query}
@@ -243,7 +245,7 @@ function WhatsOnScreen() {
           ))}
           <button
             onClick={() => setFiltersOpen((v) => !v)}
-            className={`tap-flat ml-auto flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold ${
+            className={`tap-flat ml-auto flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold lg:hidden ${
               filtersOpen || secondaryFilterCount > 0 ? "bg-primary text-primary-foreground" : "bg-muted text-foreground"
             }`}
           >
@@ -257,8 +259,7 @@ function WhatsOnScreen() {
           </button>
         </div>
 
-        {filtersOpen && (
-          <div className="space-y-2.5 rounded-2xl bg-muted/60 p-3">
+        <div className={`space-y-2.5 rounded-2xl bg-muted/60 p-3 ${filtersOpen ? "" : "hidden lg:block"}`}>
             <p className="px-0.5 text-xs font-semibold text-muted-foreground">Narrow it down</p>
 
             {(hasTlv || hasJerusalem || otherCities.length > 0) && (
@@ -329,11 +330,10 @@ function WhatsOnScreen() {
                 ))}
               </FilterGroup>
             )}
-          </div>
-        )}
+        </div>
       </div>
 
-      <div className="px-4 pb-8">
+      <div className="min-w-0 px-4 pb-8 lg:px-0">
         <Link to="/tickets" className="tap mb-3 flex items-center justify-between rounded-xl bg-muted px-4 py-2.5">
           <span className="flex items-center gap-2 text-sm font-semibold">
             <Ticket className="size-4 text-primary" />
@@ -392,13 +392,16 @@ function WhatsOnScreen() {
             return (
               <div key={group.key} className="space-y-2">
                 <p className="px-1 text-xs font-semibold uppercase tracking-widest text-muted-foreground">{label}</p>
-                {group.items.map((a) => (
-                  <ActivityCard key={a.id} activity={a} compact={compact} />
-                ))}
+                <div className="grid grid-cols-[minmax(0,1fr)] gap-2 xl:grid-cols-2">
+                  {group.items.map((a) => (
+                    <ActivityCard key={a.id} activity={a} compact={compact} />
+                  ))}
+                </div>
               </div>
             );
           })}
         </div>
+      </div>
       </div>
     </AppShell>
   );
@@ -422,7 +425,7 @@ function WhenPill({
         active ? "bg-primary text-primary-foreground" : "bg-card text-foreground shadow-card"
       }`}
     >
-      {Icon ? <Icon className="size-3.5 shrink-0" /> : null}
+      {Icon ? <Icon className="size-3.5 shrink-0 lg:hidden" /> : null}
       <span className="truncate">{children}</span>
     </button>
   );
@@ -448,8 +451,8 @@ function ActivityCard({ activity: a, compact }: { activity: Activity; compact: b
   const cat = categoryOf(a);
   const attribution = providerLabel(a.provider) === "the provider" ? null : providerLabel(a.provider);
   return (
-    <Link to="/whats-on/event/$id" params={{ id: a.id }} className="tap block">
-      <Card className={`flex gap-3 ${programme ? "border-primary/30 bg-primary-soft/40" : ""}`}>
+    <Link to="/whats-on/event/$id" params={{ id: a.id }} className="tap block h-full min-w-0">
+      <Card className={`flex h-full gap-3 ${programme ? "border-primary/30 bg-primary-soft/40" : ""}`}>
         {a.coverUrl ? (
           <img
             src={a.coverUrl}
